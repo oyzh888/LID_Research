@@ -1,3 +1,28 @@
+# For logs
+saved_models
+*.npy
+AAAI
+TB_logdir
+TB_log
+*.txt
+*.swp
+# Ignore TF Moduel file
+*.pkl
+*.h5
+*.mag
+
+Music_Text_Generation/*logdir
+
+LSTM_Music_Generation/magenta/magenta_logdir
+LSTM_Music_Generation/tmp 
+*.tfrecord
+*.mid
+
+LSTM_Music_Generation/logdir
+LSTM_Music_Generation/TB_logdir
+LSTM_Music_Generation/generated
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
