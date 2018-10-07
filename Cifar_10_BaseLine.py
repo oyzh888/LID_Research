@@ -1,46 +1,41 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
 
 
 """Trains a ResNet on the CIFAR10 dataset.
-
 ResNet v1
 [a] Deep Residual Learning for Image Recognition
 https://arxiv.org/pdf/1512.03385.pdf
-
 ResNet v2
 [b] Identity Mappings in Deep Residual Networks
 https://arxiv.org/pdf/1603.05027.pdf
 """
+
 from __future__ import print_function
-import time
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation
 from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, LearningRateScheduler, LambdaCallback, ReduceLROnPlateau
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler
+from keras.callbacks import ReduceLROnPlateau
 from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
 from keras.models import Model
-from keras.datasets import cifar100, cifar10
+from keras.datasets import cifar10
 import numpy as np
-import os, sys
-from keras.preprocessing.image import ImageDataGenerator,array_to_img,img_to_array,load_img
+import os
 from sklearn.decomposition import PCA
 import lid
 from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 
-since = time.time()
-batch_size = 128
-if(len(sys.argv)!=1):
-    print(sys.argv)
-    order = int(sys.argv[1])
-    batch_size = order
-else:
-    batch_size = -1  # orig paper trained all networks with batch_size=128
 # Training parameters
-epochs = 150
+batch_size = 128  # orig paper trained all networks with batch_size=128
+epochs = 20
 data_augmentation = False
 num_classes = 10
 
@@ -79,10 +74,9 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 root_path='../Cifar10_Aug'
-if not (os.path.exists(root_path)): os.mkdir(root_path)
+if not (os.path.exists(root_path)): print("augmentation data not found!")
 x_train = np.load(root_path+"/aug_train_x.npy")
 y_train = np.load(root_path+"/aug_train_y.npy")
-print(x_train.shape,y_train.shape)
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
@@ -93,7 +87,6 @@ x_test = x_test.astype('float32') / 255
 # If subtract pixel mean is enabled
 if subtract_pixel_mean:
     x_train_mean = np.mean(x_train, axis=0)
-    # print(x_train_mean.shape,x_train.shape,x_test.shape)
     x_train -= x_train_mean
     x_test -= x_train_mean
 
@@ -141,7 +134,6 @@ def resnet_layer(inputs,
                  conv_first=True,
                  name = None):
     """2D Convolution-Batch Normalization-Activation stack builder
-
     # Arguments
         inputs (tensor): input tensor from input image or previous layer
         num_filters (int): Conv2D number of filters
@@ -151,7 +143,6 @@ def resnet_layer(inputs,
         batch_normalization (bool): whether to include batch normalization
         conv_first (bool): conv-bn-activation (True) or
             activation-bn-conv (False)
-
     # Returns
         x (tensor): tensor as input to the next layer
     """
@@ -178,9 +169,8 @@ def resnet_layer(inputs,
     return x
 
 
-def resnet_v1(input_shape, depth, num_classes=num_classes):
+def resnet_v1(input_shape, depth, num_classes=10):
     """ResNet Version 1 Model builder [a]
-
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
     Last ReLU is after the shortcut connection.
     At the beginning of each stage, the feature map size is halved (downsampled)
@@ -202,7 +192,6 @@ x`
         input_shape (tensor): shape of input image tensor
         depth (int): number of core convolutional layers
         num_classes (int): number of classes (CIFAR10 has 10)
-
     # Returns
         model (Model): Keras model instance
     """
@@ -252,7 +241,7 @@ x`
     return model
 
 
-# # Define Model
+# Define Model
 
 #inception_resnet_v2
 model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=True,
@@ -273,19 +262,18 @@ model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=Tru
 #ResNet:
 model = resnet_v1(input_shape=input_shape, depth=depth)
 #Xception:
-# model = keras.applications.xception.Xception(include_top=True,
-#                                             weights=None,
-#                                             input_tensor=None,
-#                                             input_shape=None,
-#                                             pooling=None,
-#                                             classes=num_classes)
+model = keras.applications.xception.Xception(include_top=True,
+                                            weights=None,
+                                            input_tensor=None,
+                                            input_shape=None,
+                                            pooling=None,
+                                            classes=num_classes)
 
 model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy'])
 model.summary()
 print(model_type)
-print('#'*10 + exp_name + '#'*10)
 
 # Prepare model model saving directory.
 save_dir = os.path.join(os.getcwd(), 'saved_models')
@@ -307,8 +295,11 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                patience=5,
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
+callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
+    log_dir='../TB_logdir/LID/' + exp_name + augmentation_name,write_images=False)]
 
 
+<<<<<<< HEAD
 x_train_epoch = []
 y_train_epoch = []
 def renew_train_dataset():
@@ -334,20 +325,19 @@ on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 #   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
 callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
              TensorBoard(log_dir='../TB_logdir/LID_Aug/' + exp_name,write_images=False)]
+=======
+# Train
+>>>>>>> 4f018f6f2bc97a1ffc80853e3b17f1ac6f5a8699
 
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
-    renew_train_dataset()
-    print(x_train_epoch.shape)
-
-    model.fit(x_train_epoch, y_train_epoch,
+    model.fit(x_train, y_train,
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
               shuffle=True,
               callbacks=callbacks)
-
 else:
     print('Using real-time data augmentation.')
     # This will do preprocessing and realtime data augmentation:
@@ -403,9 +393,6 @@ else:
                         epochs=epochs, verbose=1, workers=4,
                         callbacks=callbacks)
 # Score trained model.
-time_elapsed = time.time() - since
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
-print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60)) # 打印出来时间

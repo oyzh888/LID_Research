@@ -34,13 +34,87 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 
 # Training parameters
-batch_size = 256  # orig paper trained all networks with batch_size=128
+batch_size = 128  # orig paper trained all networks with batch_size=128
 epochs = 20
 data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
+exp_name = 'LIDAug_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+augmentation_name = 'real_time_para_2X_augmentation'
+# augmentation参数需要在data_augmentation_by_keras.py中调整
+# -------real_time_10X_augmentation parameter----------
+# set input mean to 0 over the dataset
+# featurewise_center = False,
+# # set each sample mean to 0
+# samplewise_center = False,
+# # divide inputs by std of dataset
+# featurewise_std_normalization = False,
+# # divide each input by its std
+# samplewise_std_normalization = False,
+# # apply ZCA whitening
+# zca_whitening = False,
+# # epsilon for ZCA whitening
+# zca_epsilon = 1e-06,
+# # randomly rotate images in the range (deg 0 to 180)
+# rotation_range = 0,
+# # randomly shift images horizontally
+# width_shift_range = 0.1,
+# # randomly shift images vertically
+# height_shift_range = 0.1,
+# # set range for random shear
+# shear_range = 0.,
+# # set range for random zoom
+# zoom_range = 0.,
+# # set range for random channel shifts
+# channel_shift_range = 0.,
+# # set mode for filling points outside the input boundaries
+# fill_mode = 'nearest',
+# # value used for fill_mode = "constant"
+# cval = 0.,
+# # randomly flip images
+# horizontal_flip = True,
+# # randomly flip images
+# vertical_flip = False,
+# # set rescaling factor (applied before any other transformation)
+# rescale = None,
+# # set function that will be applied on each input
+# preprocessing_function = None,
+# # image data format, either "channels_first" or "channels_last"
+# data_format = None,
+# # fraction of images reserved for validation (strictly between 0 and 1)
+# validation_split = 0.0)
+# -------no_data_augmentation parameter----------
+# -------subtle_2X_augmentation parameter----------
+# rotation_range = 2,
+# width_shift_range = 0.1,
+# height_shift_range = 0.1,
+# rescale = 1. / 255,
+# shear_range = 0.1,
+# zoom_range = 0.1,
+# horizontal_flip = True,
+# fill_mode = 'nearest')
+# -------subtle_10X_augmentation parameter----------
+# rotation_range=4,
+# width_shift_range=0.1,
+# height_shift_range=0.1,
+# rescale=1./255,
+# shear_range=0.1,
+# zoom_range=0.1,
+# horizontal_flip=True,
+# fill_mode='nearest')
+
+# -------obvious_10X_augmentation parameter----------
+# rotation_range=40,
+# width_shift_range=0.2,
+# height_shift_range=0.2,
+# rescale=1./255,
+# shear_range=0.2,
+# zoom_range=0.2,
+# horizontal_flip=True,
+# fill_mode='nearest')
+
 
 # Model parameter
 # ----------------------------------------------------------------------------
@@ -73,7 +147,10 @@ model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
+root_path='../Cifar10_Aug'
+if not (os.path.exists(root_path)): print("augmentation data not found!")
+x_train = np.load(root_path+"/aug_train_x.npy")
+y_train = np.load(root_path+"/aug_train_y.npy")
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
@@ -293,39 +370,11 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
 callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
-  log_dir='./TB_logdir/BetterTrain_BS=256',write_images=False)]
+    log_dir='../TB_logdir/LID/' + exp_name + augmentation_name,write_images=False)]
 
 
-# # Train
+# Train
 
-
-outlier_mask=np.zeros(train_num,dtype=int)
-iteration=50
-
-###
-from progressbar import ProgressBar
-pbar = ProgressBar()
-###
-for i in pbar(range(iteration)):
-    mask=np.random.choice(train_num,batch_size,True)
-    pca = PCA(n_components=4*4*3,svd_solver='full')
-    x_batch_pca = x_train[mask].reshape(batch_size,-1)
-    pca.fit(x_batch_pca)
-    x_low_dim = pca.transform(x_batch_pca)
-#     print("LID!")
-    k=(int)(batch_size/10)
-    est = LID(x_low_dim,x_low_dim,k)
-    est_idx = np.argwhere(est<np.median(est))
-    batch_outlier_mask=mask[est_idx]
-    outlier_mask[batch_outlier_mask]+=1
-#     print("est success")
-
-print(len(outlier_mask[outlier_mask==0]))
-x_train=x_train[outlier_mask==0]
-y_train=y_train[outlier_mask==0]
-print("Get rid of outlier")
-
-# batch_size = 512
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
@@ -335,6 +384,60 @@ if not data_augmentation:
               validation_data=(x_test, y_test),
               shuffle=True,
               callbacks=callbacks)
+else:
+    print('Using real-time data augmentation.')
+    # This will do preprocessing and realtime data augmentation:
+    datagen = ImageDataGenerator(
+        # set input mean to 0 over the dataset
+        featurewise_center=False,
+        # set each sample mean to 0
+        samplewise_center=False,
+        # divide inputs by std of dataset
+        featurewise_std_normalization=False,
+        # divide each input by its std
+        samplewise_std_normalization=False,
+        # apply ZCA whitening
+        zca_whitening=False,
+        # epsilon for ZCA whitening
+        zca_epsilon=1e-06,
+        # randomly rotate images in the range (deg 0 to 180)
+        rotation_range=0,
+        # randomly shift images horizontally
+        width_shift_range=0.1,
+        # randomly shift images vertically
+        height_shift_range=0.1,
+        # set range for random shear
+        shear_range=0.,
+        # set range for random zoom
+        zoom_range=0.,
+        # set range for random channel shifts
+        channel_shift_range=0.,
+        # set mode for filling points outside the input boundaries
+        fill_mode='nearest',
+        # value used for fill_mode = "constant"
+        cval=0.,
+        # randomly flip images
+        horizontal_flip=True,
+        # randomly flip images
+        vertical_flip=False,
+        # set rescaling factor (applied before any other transformation)
+        rescale=None,
+        # set function that will be applied on each input
+        preprocessing_function=None,
+        # image data format, either "channels_first" or "channels_last"
+        data_format=None,
+        # fraction of images reserved for validation (strictly between 0 and 1)
+        validation_split=0.0)
+
+    # Compute quantities required for featurewise normalization
+    # (std, mean, and principal components if ZCA whitening is applied).
+    datagen.fit(x_train)
+
+    # Fit the model on the batches generated by datagen.flow().
+    model.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size),
+                        validation_data=(x_test, y_test),
+                        epochs=epochs, verbose=1, workers=4,
+                        callbacks=callbacks)
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
