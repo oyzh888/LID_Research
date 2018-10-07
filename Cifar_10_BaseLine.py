@@ -46,7 +46,7 @@ num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'LIDAug_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'LIDAug1time_5w_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -319,10 +319,11 @@ def renew_train_dataset():
     y_train_epoch = y_train[mask]
 
 def on_epoch_end(epoch, logs):
-    renew_train_dataset()
-    print('Y_train:',np.argmax(y_train_epoch[1:10],axis=1))
+    # renew_train_dataset()
+    print('Y_train:', np.argmax(y_train_epoch[1:10],axis=1))
     # print(logs)
 
+# np.asarray()
 
 # if(epoch%20 == 0):
 #     print(123)
@@ -332,7 +333,7 @@ on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 # callbacks = [lr_reducer, lr_scheduler,TensorBoard(
 #   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
 callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
-             TensorBoard(log_dir='../TB_logdir/LID/' + exp_name,write_images=False)]
+             TensorBoard(log_dir='../TB_logdir/LID_Aug/' + exp_name,write_images=False)]
 
 # Run training, with or without data augmentation.
 if not data_augmentation:
