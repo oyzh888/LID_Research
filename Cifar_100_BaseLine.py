@@ -300,7 +300,7 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
 callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-  log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
+  log_dir='./TB_logdir/Debug/BaseLine/Aug' + exp_name,write_images=False)]
 
 
 outlier_mask=np.zeros(train_num,dtype=int)
