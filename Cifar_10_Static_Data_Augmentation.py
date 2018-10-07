@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 
 # Training parameters
-batch_size = 256  # orig paper trained all networks with batch_size=128
+batch_size = 128  # orig paper trained all networks with batch_size=128
 epochs = 20
 data_augmentation = False
 num_classes = 10
