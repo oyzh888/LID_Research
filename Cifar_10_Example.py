@@ -5,11 +5,9 @@
 
 
 """Trains a ResNet on the CIFAR10 dataset.
-
 ResNet v1
 [a] Deep Residual Learning for Image Recognition
 https://arxiv.org/pdf/1512.03385.pdf
-
 ResNet v2
 [b] Identity Mappings in Deep Residual Networks
 https://arxiv.org/pdf/1603.05027.pdf
@@ -133,7 +131,6 @@ def resnet_layer(inputs,
                  conv_first=True,
                  name = None):
     """2D Convolution-Batch Normalization-Activation stack builder
-
     # Arguments
         inputs (tensor): input tensor from input image or previous layer
         num_filters (int): Conv2D number of filters
@@ -143,7 +140,6 @@ def resnet_layer(inputs,
         batch_normalization (bool): whether to include batch normalization
         conv_first (bool): conv-bn-activation (True) or
             activation-bn-conv (False)
-
     # Returns
         x (tensor): tensor as input to the next layer
     """
@@ -172,7 +168,6 @@ def resnet_layer(inputs,
 
 def resnet_v1(input_shape, depth, num_classes=10):
     """ResNet Version 1 Model builder [a]
-
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
     Last ReLU is after the shortcut connection.
     At the beginning of each stage, the feature map size is halved (downsampled)
@@ -194,7 +189,6 @@ x`
         input_shape (tensor): shape of input image tensor
         depth (int): number of core convolutional layers
         num_classes (int): number of classes (CIFAR10 has 10)
-
     # Returns
         model (Model): Keras model instance
     """
@@ -244,10 +238,7 @@ x`
     return model
 
 
-# # Define Model
-
-# In[2]:
-
+# Define Model
 
 #inception_resnet_v2
 model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=True,
@@ -307,27 +298,6 @@ callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
 
 # # Train
 
-# In[ ]:
-
-
-# PCA
-# shape=(8,8,3)
-# pca = PCA(n_components=4*4*3,svd_solver='full')
-# blockSize = 100
-# part_train, part_test=(int)(train_num/blockSize), (int)(test_num/blockSize)
-# x_train=x_train[:part_train]
-# y_train=y_train[:part_train]
-# x_test=x_test[:part_test]
-# y_test=y_test[:part_test]
-# x_train = x_train.reshape(part_train,-1)
-# x_test = x_test.reshape(part_test,-1)
-# pca.fit(x_train)
-# x_train = pca.transform(x_train)
-# x_test = pca.transform(x_test)
-# trainShapeModel, testShapeModel = (part_train,4,4,3),(part_test,4,4,3)
-# x_train = x_train.reshape(trainShapeModel)
-# x_test = x_test.reshape(testShapeModel)
-
 
 outlier_mask=np.zeros(train_num,dtype=int)
 iteration=50
@@ -369,13 +339,3 @@ if not data_augmentation:
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
-
-
-
-# In[ ]:
-
-
-
-
-
-
