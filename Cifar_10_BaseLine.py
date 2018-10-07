@@ -10,14 +10,13 @@ ResNet v2
 [b] Identity Mappings in Deep Residual Networks
 https://arxiv.org/pdf/1603.05027.pdf
 """
-
 from __future__ import print_function
+import time
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation
 from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler, LambdaCallback, ReduceLROnPlateau
 from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
@@ -25,25 +24,29 @@ from keras.models import Model
 from keras.datasets import cifar100, cifar10
 import numpy as np
 import os, sys
+from keras.preprocessing.image import ImageDataGenerator,array_to_img,img_to_array,load_img
 from sklearn.decomposition import PCA
 import lid
 from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 
+since = time.time()
+batch_size = 128
 if(len(sys.argv)!=1):
+    print(sys.argv)
     order = int(sys.argv[1])
     batch_size = order
 else:
     batch_size = -1  # orig paper trained all networks with batch_size=128
 # Training parameters
 epochs = 150
-data_augmentation = True
+data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'Aug_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'LIDAug_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -75,7 +78,11 @@ model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
+root_path='../Cifar10_Aug'
+if not (os.path.exists(root_path)): os.mkdir(root_path)
+x_train = np.load(root_path+"/aug_train_x.npy")
+y_train = np.load(root_path+"/aug_train_y.npy")
+print(x_train.shape,y_train.shape)
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
@@ -86,6 +93,7 @@ x_test = x_test.astype('float32') / 255
 # If subtract pixel mean is enabled
 if subtract_pixel_mean:
     x_train_mean = np.mean(x_train, axis=0)
+    # print(x_train_mean.shape,x_train.shape,x_test.shape)
     x_train -= x_train_mean
     x_test -= x_train_mean
 
@@ -299,23 +307,40 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                patience=5,
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
-callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-  log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
 
 
-outlier_mask=np.zeros(train_num,dtype=int)
-iteration=50
+x_train_epoch = []
+y_train_epoch = []
+def renew_train_dataset():
+    mask = np.random.choice(500000,50000)
+    global x_train_epoch
+    x_train_epoch = x_train[mask]
+    global y_train_epoch
+    y_train_epoch = y_train[mask]
 
-print(len(outlier_mask[outlier_mask==0]))
-x_train=x_train[outlier_mask==0]
-y_train=y_train[outlier_mask==0]
-print("Get rid of outlier")
+def on_epoch_end(epoch, logs):
+    renew_train_dataset()
+    print('Y_train:',np.argmax(y_train_epoch[1:10],axis=1))
+    # print(logs)
 
-# batch_size = 512
+
+# if(epoch%20 == 0):
+#     print(123)
+
+on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+
+# callbacks = [lr_reducer, lr_scheduler,TensorBoard(
+#   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
+callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
+             TensorBoard(log_dir='../TB_logdir/LID/' + exp_name,write_images=False)]
+
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
-    model.fit(x_train, y_train,
+    renew_train_dataset()
+    print(x_train_epoch.shape)
+
+    model.fit(x_train_epoch, y_train_epoch,
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
@@ -377,8 +402,9 @@ else:
                         epochs=epochs, verbose=1, workers=4,
                         callbacks=callbacks)
 # Score trained model.
+time_elapsed = time.time() - since
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
-
-
+print('Training complete in {:.0f}m {:.0f}s'.format(
+        time_elapsed // 60, time_elapsed % 60)) # 打印出来时间
