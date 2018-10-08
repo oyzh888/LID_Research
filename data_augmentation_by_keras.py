@@ -2,6 +2,8 @@ from keras.preprocessing.image import ImageDataGenerator,array_to_img,img_to_arr
 from keras.datasets import cifar100, cifar10
 import os
 import numpy as np
+from pathlib import *
+
 # datagen=ImageDataGenerator(
 #       rotation_range=40,
 #       width_shift_range=0.1,
@@ -53,16 +55,18 @@ datagen = ImageDataGenerator(
         # fraction of images reserved for validation (strictly between 0 and 1)
         validation_split=0.0)
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+# part = 100
+# (x_train, y_train) = (x_train[0:part], y_train[0:part])
 # x=img_to_array(x_train)
 # y=img_to_array(y_train)
-augment_time = 10
+augment_time = 1
 print(x_train.shape)
 print(y_train.shape)
 print(type(x_train))
 print(type(y_train))
 
-root_path = '../Cifar10_Aug'
-if not (os.path.exists(root_path)): os.mkdir(root_path)
+root_path = Path('../Cifar10_Aug/Pics_Debug_5w+delete')
+if not root_path.exists(): root_path.mkdir()
 from progressbar import ProgressBar
 pbar = ProgressBar()
 
@@ -73,14 +77,15 @@ for cls in pbar(range(10)):
     i = 0
     # print((y_train==cls).shape)
     # print(cls,y_train[1:10])
-    # save_dir = os.path.join(root_path, '%d' % (cls))
-    # if not(os.path.exists(save_dir)): os.mkdir(save_dir)
+    id = '%d' % (cls)
+    save_dir = root_path/id
+    if not(save_dir.exists()): save_dir.mkdir()
     x_cls=x_train[y_train.flatten()==cls]
     y_cls=y_train[y_train.flatten()==cls]
     # for batch in datagen.flow(x_cls, y_cls, batch_size=256,
     #                           save_to_dir=save_dir, save_prefix='cat', save_format='jpg'):
-    for batch in datagen.flow(x_cls, y_cls, batch_size=len(x_cls),
-                              save_prefix='', save_format='jpg'):
+    for batch in datagen.flow(x_cls, y_cls, batch_size=len(x_cls), save_to_dir=save_dir.__str__(),
+                              save_prefix=id, save_format='jpg'):
         aug_train_x.extend(batch[0])
         aug_train_y.extend(batch[1])
         i += 1
@@ -91,6 +96,6 @@ for cls in pbar(range(10)):
 # aug_train_y = np.sa
 # save_dir = os.path.join(root_path)
 
-print(np.shape(aug_train_x),np.shape(aug_train_y))
-np.save(root_path+"/aug_train_x.npy",aug_train_x)
-np.save(root_path+"/aug_train_y.npy",aug_train_y)
+print(np.shape(aug_train_x), np.shape(aug_train_y))
+np.save(root_path/"aug_train_x.npy", aug_train_x)
+np.save(root_path/"aug_train_y.npy", aug_train_y)

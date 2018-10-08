@@ -19,7 +19,7 @@ from keras.layers import Dense, Conv2D, BatchNormalization, Activation
 from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import ReduceLROnPlateau, LambdaCallback
 from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
@@ -32,16 +32,23 @@ import lid
 from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
+import sys
+
+if(len(sys.argv)!=1):
+    order = int(sys.argv[1])
+    batch_size = order
+else:
+    batch_size = 128  # orig paper trained all networks with batch_size=128
 
 # Training parameters
-batch_size = 128  # orig paper trained all networks with batch_size=128
-epochs = 20
+# batch_size = 128  # orig paper trained all networks with batch_size=128
+epochs = 150
 data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'LIDAug1time_5w_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'LIDAug1timeOYZH_5w_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -73,7 +80,9 @@ model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+(x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
 root_path='../Cifar10_Aug'
+root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 if not (os.path.exists(root_path)): print("augmentation data not found!")
 x_train = np.load(root_path+"/aug_train_x.npy")
 y_train = np.load(root_path+"/aug_train_y.npy")
@@ -269,9 +278,12 @@ model = keras.applications.xception.Xception(include_top=True,
                                             pooling=None,
                                             classes=num_classes)
 
+# def top_3_accuracy(y_true, y_pred):
+#     return top_k_categorical_accuracy(y_true, y_pred, k=3)
+# model.compile(..........., metrics=[top_3_accuracy])
 model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
-              metrics=['accuracy'])
+              metrics=['accuracy', 'top_k_categorical_accuracy'])
 model.summary()
 print(model_type)
 
@@ -296,22 +308,23 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
 callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
-    log_dir='../TB_logdir/LID/' + exp_name + augmentation_name,write_images=False)]
+    log_dir='../TB_logdir/LID/' + exp_name,write_images=False)]
 
 
-<<<<<<< HEAD
+
 x_train_epoch = []
 y_train_epoch = []
 def renew_train_dataset():
-    mask = np.random.choice(500000,50000)
+    mask = np.random.choice(50000,50000)
     global x_train_epoch
     x_train_epoch = x_train[mask]
     global y_train_epoch
     y_train_epoch = y_train[mask]
 
 def on_epoch_end(epoch, logs):
+    print('End of epoch')
     # renew_train_dataset()
-    print('Y_train:', np.argmax(y_train_epoch[1:10],axis=1))
+    # print('Y_train:', np.argmax(y_train_epoch[1:10],axis=1))
     # print(logs)
 
 # np.asarray()
@@ -325,9 +338,7 @@ on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 #   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
 callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
              TensorBoard(log_dir='../TB_logdir/LID_Aug/' + exp_name,write_images=False)]
-=======
-# Train
->>>>>>> 4f018f6f2bc97a1ffc80853e3b17f1ac6f5a8699
+
 
 # Run training, with or without data augmentation.
 if not data_augmentation:
