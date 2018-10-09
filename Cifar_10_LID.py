@@ -48,7 +48,7 @@ num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'LID_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'LID-0.2percent_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -80,6 +80,8 @@ model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+mask = np.random.choice(len(x_train),len(x_train))
+(x_train, y_train) = (x_train[mask], y_train[mask])
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
 root_path='../Cifar10_Aug'
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
@@ -89,6 +91,8 @@ root_path='../Cifar10_Aug'
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
+# part = 100
+# x_train, y_train = x_train[0:part], y_train[0:part]
 # Normalize data.
 x_train = x_train.astype('float32') / 255
 x_test = x_test.astype('float32') / 255
@@ -98,6 +102,39 @@ if subtract_pixel_mean:
     x_train_mean = np.mean(x_train, axis=0)
     x_train -= x_train_mean
     x_test -= x_train_mean
+
+# Train PCA & Find LID
+
+# 以validation各个类别作为pca分析的输入，将训练集中各个类别依照该pca进行降维，使得每个类别的降维方式一致。
+# 每个类别降维之后，在类别内部根据LID值寻找异常点，将异常点进行记录。
+cls_num = 10
+# outlier_mask=np.zeros(train_num,dtype=int)
+new_x_train = []
+new_y_train = []
+
+
+from progressbar import *
+pbar = ProgressBar()
+# lid_batch_size = batch_size
+percent_to_drop = 20
+lid_batch_size = batch_size
+for dataset_pic_id in pbar(range(0,len(x_train),lid_batch_size)):
+    upper_bound = min(dataset_pic_id + lid_batch_size, len(x_train))
+    x_train_temp_batch = x_train[dataset_pic_id: upper_bound]
+    y_train_temp_batch = y_train[dataset_pic_id: upper_bound]
+    # print(x_train_temp_batch.shape)
+    # x_train_temp = selected_x_train.reshape(selected_x_train.shape[0],-1)
+    k = int(lid_batch_size/10)
+    dis = LID(x_train_temp_batch, x_train_temp_batch, k)  # 也可以和validation计算
+    dis_idx = np.argwhere(dis < np.percentile(dis, percent_to_drop)).flatten()  # 将距离最far的1%的数据剔除掉
+    new_x_train.extend(x_train_temp_batch[dis_idx])
+    new_y_train.extend(y_train_temp_batch[dis_idx])
+
+batch_size = int(batch_size * percent_to_drop/100)
+
+x_train = np.asarray(new_x_train)
+y_train = np.asarray(new_y_train)
+
 
 # Convert class vectors to binary class matrices.
 y_train = keras.utils.to_categorical(y_train, num_classes)
@@ -251,34 +288,8 @@ x`
 
 
 # Define Model
-
-#inception_resnet_v2
-model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
-
-#DenseNet(This is an imagenet weight pretrain example, which may not work when dataset is cifar10)
-# model = keras.applications.DenseNet121(include_top=True,
-#                 weights='imagenet',
-#                 input_tensor=None,
-#                 input_shape=None,
-#                 pooling=None,
-#                 classes=1000)
-
-model = keras.applications.xception.Xception(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
-
 #ResNet:
 model = resnet_v1(input_shape=input_shape, depth=depth)
-#Xception:
-
 
 # def top_3_accuracy(y_true, y_pred):
 #     return top_k_categorical_accuracy(y_true, y_pred, k=3)
@@ -310,7 +321,7 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
 callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
-    log_dir='../TB_logdir/BaseLine/' + exp_name,write_images=False)]
+    log_dir='../TB_logdir/LID_10_9/' + exp_name, write_images=False)]
 
 
 
@@ -329,17 +340,7 @@ def on_epoch_end(epoch, logs):
     # print('Y_train:', np.argmax(y_train_epoch[1:10],axis=1))
     # print(logs)
 
-# np.asarray()
-
-# if(epoch%20 == 0):
-#     print(123)
-
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
-
-# callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-#   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
-callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
-             TensorBoard(log_dir='../TB_logdir/LID_Aug/' + exp_name,write_images=False)]
 
 
 # Run training, with or without data augmentation.
@@ -351,60 +352,7 @@ if not data_augmentation:
               validation_data=(x_test, y_test),
               shuffle=False,
               callbacks=callbacks)
-else:
-    print('Using real-time data augmentation.')
-    # This will do preprocessing and realtime data augmentation:
-    datagen = ImageDataGenerator(
-        # set input mean to 0 over the dataset
-        featurewise_center=False,
-        # set each sample mean to 0
-        samplewise_center=False,
-        # divide inputs by std of dataset
-        featurewise_std_normalization=False,
-        # divide each input by its std
-        samplewise_std_normalization=False,
-        # apply ZCA whitening
-        zca_whitening=False,
-        # epsilon for ZCA whitening
-        zca_epsilon=1e-06,
-        # randomly rotate images in the range (deg 0 to 180)
-        rotation_range=0,
-        # randomly shift images horizontally
-        width_shift_range=0.1,
-        # randomly shift images vertically
-        height_shift_range=0.1,
-        # set range for random shear
-        shear_range=0.,
-        # set range for random zoom
-        zoom_range=0.,
-        # set range for random channel shifts
-        channel_shift_range=0.,
-        # set mode for filling points outside the input boundaries
-        fill_mode='nearest',
-        # value used for fill_mode = "constant"
-        cval=0.,
-        # randomly flip images
-        horizontal_flip=True,
-        # randomly flip images
-        vertical_flip=False,
-        # set rescaling factor (applied before any other transformation)
-        rescale=None,
-        # set function that will be applied on each input
-        preprocessing_function=None,
-        # image data format, either "channels_first" or "channels_last"
-        data_format=None,
-        # fraction of images reserved for validation (strictly between 0 and 1)
-        validation_split=0.0)
 
-    # Compute quantities required for featurewise normalization
-    # (std, mean, and principal components if ZCA whitening is applied).
-    datagen.fit(x_train)
-
-    # Fit the model on the batches generated by datagen.flow().
-    model.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size),
-                        validation_data=(x_test, y_test),
-                        epochs=epochs, verbose=1, workers=4,
-                        callbacks=callbacks)
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
