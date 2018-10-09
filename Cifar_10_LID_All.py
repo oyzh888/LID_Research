@@ -33,6 +33,8 @@ from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
+import time
+start_time = time.time()
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -134,7 +136,7 @@ y_train = np.asarray(y_train[sorted_indexes])
 x_train_new = np.array([])
 y_train_new = np.array([])
 ##Build the batch
-batch_num = len(x_train)/batch_size
+batch_num = int(len(x_train)/batch_size)
 for i in range(batch_num):
     for j in range(batch_size):
         np.append(x_train_new, x_train[i*batch_size + j])
@@ -362,3 +364,4 @@ if not data_augmentation:
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
+print("--- %s seconds ---" % (time.time() - start_time))
