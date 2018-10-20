@@ -33,6 +33,7 @@ from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
+from pathlib import *
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -42,13 +43,13 @@ else:
 
 # Training parameters
 # batch_size = 128  # orig paper trained all networks with batch_size=128
-epochs = 150
+epochs = 50
 data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'LID_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -81,7 +82,7 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-root_path='../Cifar10_Aug'
+work_path=Path('../../Cifar10_LID_DataDrop')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -123,16 +124,6 @@ def lr_schedule(epoch):
         lr *= 1e-1
     print('Learning rate: ', lr)
     return lr
-
-# base_lr = 1e-6
-# max_lr = 1e-3
-# step_size = 5
-
-# def lr_schedule_cycle(iterations):
-#     cycle = np.floor(1+iterations/(2*step_size))
-#     x = np.abs(iterations/step_size - 2*cycle + 1)
-#     lr = base_lr + (max_lr-base_lr)*np.maximum(0, (1-x))/float(2**(cycle-1))
-#     return lr
 
 def resnet_layer(inputs,
                  num_filters=16,
@@ -252,37 +243,9 @@ x`
 
 # Define Model
 
-#inception_resnet_v2
-model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
-
-#DenseNet(This is an imagenet weight pretrain example, which may not work when dataset is cifar10)
-# model = keras.applications.DenseNet121(include_top=True,
-#                 weights='imagenet',
-#                 input_tensor=None,
-#                 input_shape=None,
-#                 pooling=None,
-#                 classes=1000)
-
-model = keras.applications.xception.Xception(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
-
 #ResNet:
 model = resnet_v1(input_shape=input_shape, depth=depth)
-#Xception:
 
-
-# def top_3_accuracy(y_true, y_pred):
-#     return top_k_categorical_accuracy(y_true, y_pred, k=3)
-# model.compile(..........., metrics=[top_3_accuracy])
 model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy', 'top_k_categorical_accuracy'])
@@ -290,18 +253,6 @@ model.summary()
 print(model_type)
 
 # Prepare model model saving directory.
-save_dir = os.path.join(os.getcwd(), 'saved_models')
-model_name = 'cifar10_%s_model.{epoch:03d}.h5' % model_type
-if not os.path.isdir(save_dir):
-    os.makedirs(save_dir)
-filepath = os.path.join(save_dir, model_name)
-
-# Prepare callbacks for model saving and for learning rate adjustment.
-checkpoint = ModelCheckpoint(filepath=filepath,
-                             monitor='val_acc',
-                             verbose=1,
-                             save_best_only=True)
-
 lr_scheduler = LearningRateScheduler(lr_schedule)
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
@@ -309,15 +260,13 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                patience=5,
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
-callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(
-    log_dir='../TB_logdir/BaseLine/' + exp_name,write_images=False)]
-
-
+callbacks = [lr_reducer, lr_scheduler,TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
 x_train_epoch = []
 y_train_epoch = []
 def renew_train_dataset():
-    mask = np.random.choice(50000,50000)
+    mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
     x_train_epoch = x_train[mask]
     global y_train_epoch
@@ -325,86 +274,20 @@ def renew_train_dataset():
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
-    # renew_train_dataset()
-    # print('Y_train:', np.argmax(y_train_epoch[1:10],axis=1))
-    # print(logs)
-
-# np.asarray()
-
-# if(epoch%20 == 0):
-#     print(123)
+    renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
-
-# callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-#   log_dir='./TB_logdir/BaseLine/Aug' + exp_name,write_images=False)]
-callbacks = [lr_reducer, lr_scheduler,on_epoch_end_callback,
-             TensorBoard(log_dir='../TB_logdir/LID_Aug/' + exp_name,write_images=False)]
-
-
+renew_train_dataset()
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
-    model.fit(x_train, y_train,
+    model.fit(x_train_epoch, y_train_epoch,
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
               shuffle=False,
               callbacks=callbacks)
-else:
-    print('Using real-time data augmentation.')
-    # This will do preprocessing and realtime data augmentation:
-    datagen = ImageDataGenerator(
-        # set input mean to 0 over the dataset
-        featurewise_center=False,
-        # set each sample mean to 0
-        samplewise_center=False,
-        # divide inputs by std of dataset
-        featurewise_std_normalization=False,
-        # divide each input by its std
-        samplewise_std_normalization=False,
-        # apply ZCA whitening
-        zca_whitening=False,
-        # epsilon for ZCA whitening
-        zca_epsilon=1e-06,
-        # randomly rotate images in the range (deg 0 to 180)
-        rotation_range=0,
-        # randomly shift images horizontally
-        width_shift_range=0.1,
-        # randomly shift images vertically
-        height_shift_range=0.1,
-        # set range for random shear
-        shear_range=0.,
-        # set range for random zoom
-        zoom_range=0.,
-        # set range for random channel shifts
-        channel_shift_range=0.,
-        # set mode for filling points outside the input boundaries
-        fill_mode='nearest',
-        # value used for fill_mode = "constant"
-        cval=0.,
-        # randomly flip images
-        horizontal_flip=True,
-        # randomly flip images
-        vertical_flip=False,
-        # set rescaling factor (applied before any other transformation)
-        rescale=None,
-        # set function that will be applied on each input
-        preprocessing_function=None,
-        # image data format, either "channels_first" or "channels_last"
-        data_format=None,
-        # fraction of images reserved for validation (strictly between 0 and 1)
-        validation_split=0.0)
 
-    # Compute quantities required for featurewise normalization
-    # (std, mean, and principal components if ZCA whitening is applied).
-    datagen.fit(x_train)
-
-    # Fit the model on the batches generated by datagen.flow().
-    model.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size),
-                        validation_data=(x_test, y_test),
-                        epochs=epochs, verbose=1, workers=4,
-                        callbacks=callbacks)
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
