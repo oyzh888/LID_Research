@@ -47,27 +47,18 @@ epochs = 20
 data_augmentation = False
 num_classes = 10
 
+source_percent = 1
+target_percent = 2
+# drop_alg='Resample_aug_high%d_to_%d' % (source_percent,target_percent)
+drop_alg='Resample_cls_aug_high%d_to_%d' % (source_percent,target_percent)
+# drop_alg='baseline'
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-# exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
-exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Duplicate1' % (batch_size, epochs)
-
-# Model parameter
-# ----------------------------------------------------------------------------
-#           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
-# Model     |  n   | ResNet v1 | ResNet v1 | ResNet v2 | ResNet v2 | GTX1080Ti
-#           |v1(v2)| %Accuracy | %Accuracy | %Accuracy | %Accuracy | v1 (v2)
-# ----------------------------------------------------------------------------
-# ResNet20  | 3 (2)| 92.16     | 91.25     | -----     | -----     | 35 (---)
-# ResNet32  | 5(NA)| 92.46     | 92.49     | NA        | NA        | 50 ( NA)
-# ResNet44  | 7(NA)| 92.50     | 92.83     | NA        | NA        | 70 ( NA)
-# ResNet56  | 9 (6)| 92.71     | 93.03     | 93.01     | NA        | 90 (100)
-# ResNet110 |18(12)| 92.65     | 93.39+-.16| 93.15     | 93.63     | 165(180)
-# ResNet164 |27(18)| -----     | 94.07     | -----     | 94.54     | ---(---)
-# ResNet1001| (111)| -----     | 92.39     | -----     | 95.08+-.14| ---(---)
-# ---------------------------------------------------------------------------
+# exp_name = 'LID_%s_BS%d_epochs%d_Keras_Shuffle' % (drop_alg,batch_size, epochs)
+# exp_name = 'LID_%s_resNet_Cifar10_BS%d_epochs%d_Baseline' % (drop_alg,batch_size, epochs)
+exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle' % (drop_alg,batch_size, epochs)
+# exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle_Duplicate1' % (drop_alg,batch_size, epochs)
 n = 3
-
 # Model version
 # Orig paper: version = 1 (ResNet v1), Improved ResNet: version = 2 (ResNet v2)
 version = 1
@@ -84,7 +75,7 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../Cifar10_LID_DataDrop')
+work_path=Path('../../../Cifar10_LID_DataDrop')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -251,8 +242,8 @@ model = resnet_v1(input_shape=input_shape, depth=depth)
 model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy', 'top_k_categorical_accuracy'])
-model.summary()
-print(model_type)
+# model.summary()
+print("-"*20+exp_name+'-'*20)
 
 # Prepare model model saving directory.
 lr_scheduler = LearningRateScheduler(lr_schedule)
@@ -261,25 +252,91 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                cooldown=0,
                                patience=5,
                                min_lr=0.5e-6)
-from keras.callbacks import TensorBoard
-callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
+# lid load
+lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_Globale_Class_lid_K70.npy")
+# lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70_TEST1.npy")
+# # lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train,100 - drop_percent)).flatten()#Drop High
+# lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten()#Drop Low
+# x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
+#
+#
+#
+# # Re-sample
+# sample_mask = np.random.choice(len(x_train),int(train_num*drop_percent/100), replace=False)
+# x_train = np.append(x_train,x_train[sample_mask], axis=0)
+# y_train = np.append(y_train,y_train[sample_mask], axis=0)
+
+# print('OYZH shape:', y_train.shape )
+# import ipdb; ipdb.set_trace()
 x_train_epoch = []
 y_train_epoch = []
+
+# x_train = np.append(x_train_aug, x_train_ori)
+
+
 def renew_train_dataset():
+    alpha = source_percent;
+    beta = target_percent;  # alpha表示抽取lid最高样本的比例，beta表示前面抽取的样本在新的样本集中占据了多少比例.beta>alpha
+
+    # 按照全局LID进行resample
+    # lid_high_idx = np.argwhere(lid_train > np.percentile(lid_train, 100 - alpha)).flatten()  # select high lid idx
+    # lid_low_idx = np.argwhere(lid_train <= np.percentile(lid_train, 100 - alpha)).flatten()  # select low lid idx
+    #
+    # lid_high_aug_idx = np.append(lid_high_idx,
+    #                              np.random.choice(lid_high_idx, int(train_num * ((beta - alpha) / 100)), replace=True))
+    # lid_low_aug_idx = np.random.choice(lid_low_idx, int(train_num * (1 - beta / 100)), replace=False)
+
+    # 按照各类别LID进行resample
+    lid_sorted_idx = np.argsort(-lid_train) # 从大到小对LID排序，记录其下标。
+    y_train_lid_sorted = np.argmax(y_train[lid_sorted_idx],axis=1)
+    lid_high_aug_idx=[]
+    lid_low_aug_idx = []
+    for cls in range(num_classes):
+        cls_lid_sorted_idx = lid_sorted_idx[y_train_lid_sorted==cls]
+        cls_train_num=len(cls_lid_sorted_idx)
+        lid_high_idx = cls_lid_sorted_idx[:int(cls_train_num*source_percent/100)]
+        lid_low_idx = cls_lid_sorted_idx[int(cls_train_num*source_percent/100):]
+        # print("before aug",len(lid_high_aug_idx),len(lid_low_aug_idx))
+        lid_high_aug_idx.extend(lid_high_idx)
+        lid_high_aug_idx.extend(np.random.choice(lid_high_idx, int(cls_train_num * ((beta - alpha) / 100)),replace=True))
+        lid_low_aug_idx.extend(np.random.choice(lid_low_idx,int(cls_train_num * (1 - beta / 100)), replace=False))
+        # print("after aug", len(lid_high_aug_idx), len(lid_low_aug_idx),"type",type(lid_low_aug_idx[0]))
+
+    # print('lid_high_aug_idx', len(lid_high_aug_idx))
+    # print('lid_low_aug_idx', len(lid_low_aug_idx))
+
+
+    new_selected_index = np.append(lid_high_aug_idx,lid_low_aug_idx)
+    new_selected_x_train = x_train[new_selected_index]
+    new_selected_y_train = y_train[new_selected_index]
+
+    not_selected_idx = np.delete(np.arange(train_num),new_selected_index)
+
+    print('not_selected_idx',not_selected_idx)
+    print('not_selected_idx shape', not_selected_idx.shape)
+    import ipdb;
+    ipdb.set_trace()
     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
-    x_train_epoch = x_train[mask]
+    x_train_epoch = new_selected_x_train[mask]
     global y_train_epoch
-    y_train_epoch = y_train[mask]
+    y_train_epoch = new_selected_y_train[mask]
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
+    print("dataset size ",x_train.shape[0])
     renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+from keras.callbacks import TensorBoard
+callbacks = [lr_reducer, lr_scheduler, on_epoch_end_callback, TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
+# baseline
+# callbacks = [lr_reducer, lr_scheduler, TensorBoard(
+#     log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 renew_train_dataset()
+# import ipdb;ipdb.set_trace()
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
@@ -287,9 +344,15 @@ if not data_augmentation:
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
-              shuffle=False,
+              shuffle=True,
               callbacks=callbacks)
-
+    # Baseline:
+    # model.fit(x_train, y_train,
+    #           batch_size=batch_size,
+    #           epochs=epochs,
+    #           validation_data=(x_test, y_test),
+    #           shuffle=True,
+    #           callbacks=callbacks)
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])

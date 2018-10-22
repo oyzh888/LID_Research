@@ -47,10 +47,11 @@ epochs = 20
 data_augmentation = False
 num_classes = 10
 
+drop_percent = 5
+drop_alg='Resample_DL%d' % drop_percent
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-# exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
-exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Duplicate1' % (batch_size, epochs)
+exp_name = 'LID_%s_resNet_Cifar10_BS%d_epochs%d' % (drop_alg,batch_size, epochs)
 
 # Model parameter
 # ----------------------------------------------------------------------------
@@ -84,7 +85,7 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../Cifar10_LID_DataDrop')
+work_path=Path('../../../Cifar10_LID_DataDrop')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -252,7 +253,7 @@ model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy', 'top_k_categorical_accuracy'])
 model.summary()
-print(model_type)
+print("-"*20+exp_name+'-'*20)
 
 # Prepare model model saving directory.
 lr_scheduler = LearningRateScheduler(lr_schedule)
@@ -264,9 +265,22 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
 from keras.callbacks import TensorBoard
 callbacks = [lr_reducer, lr_scheduler,TensorBoard(
     log_dir= (work_path/'TB_Log'/exp_name).__str__())]
+# lid load
+lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70.npy")
+# lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train,100 - drop_percent)).flatten()#Drop High
+lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten()#Drop Low
+x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
 
+# Re-sample
+sample_mask = np.random.choice(len(x_train),int(train_num*drop_percent/100), replace=False)
+x_train = np.append(x_train,x_train[sample_mask], axis=0)
+y_train = np.append(y_train,y_train[sample_mask], axis=0)
+
+# print('OYZH shape:', y_train.shape )
+# import ipdb; ipdb.set_trace()
 x_train_epoch = []
 y_train_epoch = []
+
 def renew_train_dataset():
     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
