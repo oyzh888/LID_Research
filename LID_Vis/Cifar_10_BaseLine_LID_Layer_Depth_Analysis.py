@@ -11,6 +11,8 @@ https://arxiv.org/pdf/1512.03385.pdf
 ResNet v2
 [b] Identity Mappings in Deep Residual Networks
 https://arxiv.org/pdf/1603.05027.pdf
+首先对网络进行训练，在训练完成后，分析LID值在各层feature map中的变化。LID值使用全局Batch（而非Class）
+Batch Size为5000.
 """
 
 from __future__ import print_function
@@ -23,13 +25,16 @@ from keras.callbacks import ReduceLROnPlateau, LambdaCallback
 from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
-from keras.models import Model
+from keras.models import Model,load_model
 from keras.datasets import cifar10
 import numpy as np
-import os
+import math
+import os,gc
+import psutil
+import sys
 from sklearn.decomposition import PCA
-import lid
-from lid import LID
+import util
+from util import GPU_lid_eval
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
@@ -47,18 +52,13 @@ epochs = 20
 data_augmentation = False
 num_classes = 10
 
-source_percent = 1
-target_percent = 1
-drop_alg='Resample_aug_high%d_to_%d' % (source_percent,target_percent)
-# drop_alg='Resample_cls_aug_high%d_to_%d' % (source_percent,target_percent)
-# drop_alg='baseline'
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-# exp_name = 'LID_%s_BS%d_epochs%d_Keras_Shuffle' % (drop_alg,batch_size, epochs)
-# exp_name = 'LID_%s_resNet_Cifar10_BS%d_epochs%d_Baseline' % (drop_alg,batch_size, epochs)
-exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle' % (drop_alg,batch_size, epochs)
-# exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle_Duplicate1' % (drop_alg,batch_size, epochs)
+# exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Shuffle_LID_Depth_Analysis' % (batch_size, epochs)
+
 n = 3
+
 # Model version
 # Orig paper: version = 1 (ResNet v1), Improved ResNet: version = 2 (ResNet v2)
 version = 1
@@ -75,11 +75,10 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../../Cifar10_LID_DataDrop')
-# root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
-# if not (os.path.exists(root_path)): print("augmentation data not found!")
-# x_train = np.load(root_path+"/aug_train_x.npy")
-# y_train = np.load(root_path+"/aug_train_y.npy")
+# part=5000
+# x_train = x_train[:part]
+# y_train = y_train[:part]
+work_path=Path('../../Cifar10_Layer_LID')
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
@@ -243,8 +242,7 @@ model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy', 'top_k_categorical_accuracy'])
 # model.summary()
-print("-"*20+exp_name+'-'*20)
-
+# print(model_type)
 # Prepare model model saving directory.
 lr_scheduler = LearningRateScheduler(lr_schedule)
 
@@ -252,108 +250,91 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                cooldown=0,
                                patience=5,
                                min_lr=0.5e-6)
+from keras.callbacks import TensorBoard
+callbacks = [lr_reducer, lr_scheduler,TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
-# lid load
-lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_Globale_Class_lid_K70.npy")
-# lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70_TEST1.npy")
-# # lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train,100 - drop_percent)).flatten()#Drop High
-# lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten()#Drop Low
-# x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
-#
-#
-#
-# # Re-sample
-# sample_mask = np.random.choice(len(x_train),int(train_num*drop_percent/100), replace=False)
-# x_train = np.append(x_train,x_train[sample_mask], axis=0)
-# y_train = np.append(y_train,y_train[sample_mask], axis=0)
-
-# print('OYZH shape:', y_train.shape )
-# import ipdb; ipdb.set_trace()
 x_train_epoch = []
 y_train_epoch = []
-
-# x_train = np.append(x_train_aug, x_train_ori)
-
-
 def renew_train_dataset():
-    alpha = source_percent;
-    beta = target_percent;  # alpha表示抽取lid最高样本的比例，beta表示前面抽取的样本在新的样本集中占据了多少比例.beta>alpha
-
-    # 按照全局LID进行resample
-    lid_high_idx = np.argwhere(lid_train > np.percentile(lid_train, 100 - alpha)).flatten()  # select high lid idx
-    lid_low_idx = np.argwhere(lid_train <= np.percentile(lid_train, 100 - alpha)).flatten()  # select low lid idx
-
-    lid_high_aug_idx = np.append(lid_high_idx,
-                                 np.random.choice(lid_high_idx, int(train_num * ((beta - alpha) / 100)), replace=True))
-    lid_low_aug_idx = np.random.choice(lid_low_idx, int(train_num * (1 - beta / 100)), replace=False)
-
-    # 按照各类别LID进行resample
-    # lid_sorted_idx = np.argsort(-lid_train) # 从大到小对LID排序，记录其下标。
-    # y_train_lid_sorted = np.argmax(y_train[lid_sorted_idx],axis=1)
-    # lid_high_aug_idx=[]
-    # lid_low_aug_idx = []
-    # for cls in range(num_classes):
-    #     cls_lid_sorted_idx = lid_sorted_idx[y_train_lid_sorted==cls]
-    #     cls_train_num=len(cls_lid_sorted_idx)
-    #     lid_high_idx = cls_lid_sorted_idx[:int(cls_train_num*source_percent/100)]
-    #     lid_low_idx = cls_lid_sorted_idx[int(cls_train_num*source_percent/100):]
-    #     # print("before aug",len(lid_high_aug_idx),len(lid_low_aug_idx))
-    #     lid_high_aug_idx.extend(lid_high_idx)
-    #     lid_high_aug_idx.extend(np.random.choice(lid_high_idx, int(cls_train_num * ((beta - alpha) / 100)),replace=True))
-    #     lid_low_aug_idx.extend(np.random.choice(lid_low_idx,int(cls_train_num * (1 - beta / 100)), replace=False))
-        # print("after aug", len(lid_high_aug_idx), len(lid_low_aug_idx),"type",type(lid_low_aug_idx[0]))
-
-    # print('lid_high_aug_idx', len(lid_high_aug_idx))
-    # print('lid_low_aug_idx', len(lid_low_aug_idx))
-
-
-    new_selected_index = np.append(lid_high_aug_idx,lid_low_aug_idx)
-    new_selected_x_train = x_train[new_selected_index]
-    new_selected_y_train = y_train[new_selected_index]
-
-    not_selected_idx = np.delete(np.arange(train_num),new_selected_index)
-
-    # print('not_selected_idx',not_selected_idx)
-    # print('not_selected_idx shape', not_selected_idx.shape)
-    # import ipdb;
-    # ipdb.set_trace()
     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
-    x_train_epoch = new_selected_x_train[mask]
+    x_train_epoch = x_train[mask]
     global y_train_epoch
-    y_train_epoch = new_selected_y_train[mask]
+    y_train_epoch = y_train[mask]
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
-    print("dataset size ",x_train.shape[0])
     renew_train_dataset()
 
-on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
-from keras.callbacks import TensorBoard
-callbacks = [lr_reducer, lr_scheduler, on_epoch_end_callback, TensorBoard(
-    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
-# baseline
-# callbacks = [lr_reducer, lr_scheduler, TensorBoard(
-#     log_dir= (work_path/'TB_Log'/exp_name).__str__())]
-renew_train_dataset()
-# import ipdb;ipdb.set_trace()
+# on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+# renew_train_dataset()
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
-    model.fit(x_train_epoch, y_train_epoch,
-              batch_size=batch_size,
-              epochs=epochs,
-              validation_data=(x_test, y_test),
-              shuffle=True,
-              callbacks=callbacks)
-    # Baseline:
     # model.fit(x_train, y_train,
     #           batch_size=batch_size,
     #           epochs=epochs,
     #           validation_data=(x_test, y_test),
     #           shuffle=True,
     #           callbacks=callbacks)
-# Score trained model.
-scores = model.evaluate(x_test, y_test, verbose=1)
-print('Test loss:', scores[0])
-print('Test accuracy:', scores[1])
+    model = load_model(work_path/'saved_models/preTrainedCIFAR10_augX10.h5')
+    # model.summary()
+# 创建保存各层输出的变量outputs，该变量类似于占位符，不实际运算
+layers_names=[];outputs = [];outputs_predict_lid=[]
+# 创建保存各层LID值的文件夹
+Path(work_path/'Layer_LID_nparray').mkdir(parents=True, exist_ok=True)
+# 计算各层LID
+layerIdx=0
+import time
+start_time=time.time()
+output_predict_lid = np.zeros(train_num)
+for layer in model.layers:
+    # 过滤掉特殊层
+    # if layer.__class__.__name__ in {"Conv2D","InputLayer","Activation","Add"}:
+    if layer.__class__.__name__ not in {"Conv2D"}:
+        continue
+    threshold = 5000;cur_layer_shape=1
+    # import ipdb;ipdb.set_trace()
+    for i in layer.output_shape:
+        if i is None:
+            continue;
+        cur_layer_shape *= i
+    if cur_layer_shape > threshold:
+        print("layer ",layer.name," size ",cur_layer_shape," skip")
+        continue;
+    print("Calculating LID in ",layer.name)
+    layers_names.append(layer.name)
+    model_intermediate_layer = Model(inputs=model.input, outputs=layer.output)
+    output_predict = model_intermediate_layer.predict(x_train, batch_size=batch_size)
+    output_predict_flatten = np.reshape(output_predict,newshape=(train_num,-1)).astype('float32')
+    # 创建实际保存个层数出的outputs_predict，并计算各层输出。
+    batch_num = int(train_num/batch_size);lid_k = int(math.sqrt(batch_size));
+    train_idx = np.arange(train_num);np.random.shuffle(train_idx)
+    from progressbar import *
+    pbar = ProgressBar()
+    for i in pbar(range(batch_num)):
+        mask_batch = []
+        if ((i + 1) * batch_size < train_num):
+            mask_batch = np.arange(i * batch_size, (i + 1) * batch_size)  # 一个样本下标仅出现一次,顺序训练
+        else:
+            mask_batch = np.arange(i * batch_size, train_num)
+        import tensorflow as tf
+        with tf.device('/gpu:0'):
+            # print("LID Batch Shape",output_predict_flatten[train_idx[mask_batch]].shape)
+            dis = GPU_lid_eval(output_predict_flatten[train_idx[mask_batch]], lid_k)
+        output_predict_lid[train_idx[mask_batch]] = dis
+    # import ipdb;ipdb.set_trace()
+    lidPath = '%d_%s_BS%d_LID.npy'%(layerIdx,layer.name,batch_size)
+    np.save(Path(work_path/'Layer_LID_nparray'/lidPath).__str__(), output_predict_lid)
+    layerIdx += 1
+    pid = os.getpid()
+    info = psutil.Process(pid).memory_full_info()
+    memory = info.uss / 1024. / 1024.
+    print("Currrent Memory Usage",memory)
+    # import ipdb;ipdb.set_trace()
+    # del output_predict_lid
+    # gc.collect()
+    # outputs_predict_lid.append(output_predict_lid)
+print("Calculating All Layers LID Spent ",(time.time()-start_time)/60,"min")
+np.save(Path(work_path/'Layer_LID_nparray'/'layers_ordial_name').__str__(),layers_names)

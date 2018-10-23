@@ -49,7 +49,9 @@ num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+# exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Shuffle' % (batch_size, epochs)
+
 # Model parameter
 # ----------------------------------------------------------------------------
 #           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
@@ -285,7 +287,7 @@ if not data_augmentation:
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
-              shuffle=False,
+              shuffle=True,
               callbacks=callbacks)
 
 # Score trained model.
