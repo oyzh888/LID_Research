@@ -38,11 +38,12 @@ import os
 from sklearn.decomposition import PCA
 import lid
 from lid import LID
+from util import GPU_lid_eval
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 # plt.imshow
 # Training parameters
-batch_size = 5000  # orig paper trained all networks with batch_size=128x
+batch_size = 64  # orig paper trained all networks with batch_size=128x
 num_classes = 10
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
@@ -102,7 +103,7 @@ print(x_train.shape[0], 'train samples')
 print(x_test.shape[0], 'test samples')
 print('y_train shape:', y_train.shape)
 # saved_models
-model=load_model('./saved_models/preTrainedCIFAR10_augX10.h5')
+model=load_model('../saved_models/preTrainedCIFAR10_augX10.h5')
 # outputs = [layer.output for layer in model.layers]
 outputs = []
 layers_names=['average_pooling2d_1']
@@ -114,13 +115,13 @@ model_intermediate_layer = Model(inputs=model.input, outputs=outputs)
 outputs_predict = model_intermediate_layer.predict(x_train, batch_size=1024)
 
 import time
-start_time=time.time()
+
 outputs_predict_flatten = np.reshape(outputs_predict,newshape=(x_train.shape[0],-1))
 outputs_predict_flatten = outputs_predict_flatten.astype('float32')
 outputs_predict_lid=np.zeros(x_train.shape[0])
 lid_k=int(math.sqrt(batch_size))
 batch_num=int(train_num/batch_size)
-
+start_time=time.time()
 train_idx=np.arange(train_num)
 np.random.shuffle(train_idx)
 from progressbar import *
@@ -132,12 +133,11 @@ for i in pbar(range(batch_num)):
     else:
         mask_batch = np.arange(i*batch_size,train_num)
     # import ipdb;ipdb.set_trace()
-    dis = LID(outputs_predict_flatten[train_idx[mask_batch]], outputs_predict_flatten[train_idx[mask_batch]], lid_k)
+    dis = GPU_lid_eval(outputs_predict_flatten[train_idx[mask_batch]],lid_k)
     outputs_predict_lid[train_idx[mask_batch]] = dis
-
 print("outputs_predic_lid time ",time.time()-start_time)
 print("OUTPUT_PREDICT_LID FINISH!")
-test_time = 3
+test_time = 0
 exp_name='Cifar10_ground_truth_dataset%d_BS%d_lid_K%d_TEST%d'%(x_train.shape[0],batch_size,lid_k,test_time)
 
 
