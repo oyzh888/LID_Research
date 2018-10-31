@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from pathlib import *
 
 
-exp_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/LID_Research/Cifar10_epoch_Lid/LID_Epoch_NP/LIDEpoch_resNet_Cifar10_BS128_epochs20')
+exp_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/LID_Research/Cifar10_epoch_Lid/LID_Epoch_NP/conv2d_17_LIDEpoch_resNet_Cifar10_BS128_epochs100')
 
 train_np_path = exp_path/'train_lid.npy'
 test_np_path = exp_path/'test_lid.npy'
@@ -43,15 +43,33 @@ pic_path = exp_path/'picture'
 pic_path.mkdir(parents=True,exist_ok=True)
 
 plt.savefig((pic_path/'test_train_average_variance.pdf').__str__())
-exit()
+# exit()
 
 # import ipdb; ipdb.set_trace()
-print(np.shape(train_lids_epoch))
+
 plt.close()
 ##Box Pic
-plt.boxplot(train_lids_epoch, patch_artist=True)
+
+# import ipdb; ipdb.set_trace()
+# print(train_lids_epoch[0])
+# print(train_lids_epoch[0][0])
+# print(train_lids_epoch.shape)
+train_lids_epoch = train_lids_epoch[0:2][:50000]
+# for var in train_lids_epoch:
+print(np.shape(x))
+print(np.shape(train_lids_epoch))
+# import ipdb; ipdb.set_trace()
+# ans = map(str, x)
+# print('ans:',ans)
+ans = ['1','2','3']
+
+
+plt.xticks(np.arange(len(x)),[i for i in x])
+plt.boxplot(train_lids_epoch,patch_artist=True) #描点上色
+
+# plt.boxplot(train_lids_epoch, labels=ans)
 print("Finish Box")
-plt.plot(x, y_average)
+plt.plot(x, y_average_train)
 plt.savefig((pic_path/'box.pdf').__str__())
 
 # plt.show()

@@ -111,6 +111,7 @@ print(x_train.shape[0], 'train samples')
 print(x_test.shape[0], 'test samples')
 print('y_train shape:', y_train.shape)
 
+
 def lr_schedule(epoch):
     #Learning Rate Schedule
     lr = 1e-3
@@ -277,6 +278,8 @@ def on_epoch_end(epoch, logs):
     renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+
+
 renew_train_dataset()
 # Run training, with or without data augmentation.
 if not data_augmentation:

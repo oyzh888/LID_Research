@@ -111,6 +111,51 @@ def GPU_lid_eval(logits, k=20):
     print('LID GPU Time:',time.time()-start_time)
     return lids
 
+from keras import backend as K
+def GPU_lid_eval_keras(logits, k=20):
+    import time
+    start_time = time.time()
+    """
+    Calculate LID for a minibatch of training samples based on the outputs of the network.
+
+    :param logits:
+    :param k:
+    :return:
+    """
+    print(logits.shape)
+    logits = K.constant(logits,dtype=tf.float32)
+
+    epsilon = 1e-12
+    batch_size = K.shape(logits)[0]
+    # n_samples = logits.get_shape().as_list()
+    # calculate pairwise distance
+    r = K.reduce_sum(logits * logits, 1)
+    # turn r into column vector
+    r1 = K.reshape(r, [-1, 1])
+    D = r1 - 2 * K.matmul(logits, K.transpose(logits)) + K.transpose(r1) + \
+        K.ones([batch_size, batch_size])
+
+    # find the k nearest neighbor
+    D1 = -K.sqrt(D)
+    D2, _ = tf.nn.top_k(D1, k=k, sorted=True)
+    D3 = -D2[:, 1:]  # skip the x-to-x distance 0 by using [,1:]
+
+    m = K.transpose(K.multiply(K.transpose(D3), 1.0 / D3[:, -1]))
+    v_log = K.reduce_sum(tf.log(m + epsilon), axis=1)  # to avoid nan
+    lids = -k / v_log
+    ## l2 normalization
+    # lids = tf.nn.l2_normalize(lids, dim=0, epsilon=epsilon)
+
+    # import ipdb;
+    # ipdb.set_trace()
+
+    # sess = tf.Session()
+    #     # with sess.as_default():
+    #     #     lids = sess.run(lids)
+
+    print('LID GPU Time:',time.time()-start_time)
+    return lids.eval()
+
 def GPU_lid_eval_opt(logits, k=20):
     import time
     start_time = time.time()
