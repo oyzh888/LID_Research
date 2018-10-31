@@ -49,15 +49,13 @@ num_classes = 10
 
 source_percent = 1
 target_percent = 1
-drop_alg='Resample_aug_high%d_to_%d' % (source_percent,target_percent)
-# drop_alg='Resample_cls_aug_high%d_to_%d' % (source_percent,target_percent)
-# drop_alg='baseline'
+# drop_alg='Resample_aug_high%d_to_%d' % (source_percent,target_percent)
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-# exp_name = 'LID_%s_BS%d_epochs%d_Keras_Shuffle' % (drop_alg,batch_size, epochs)
-# exp_name = 'LID_%s_resNet_Cifar10_BS%d_epochs%d_Baseline' % (drop_alg,batch_size, epochs)
-exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle' % (drop_alg,batch_size, epochs)
-# exp_name = 'LID_%s_BS%d_epochs%d_Class_LID_Keras_Shuffle_Duplicate1' % (drop_alg,batch_size, epochs)
+# 调用class lid
+# exp_name = 'LID_BS%d_epochs%d_Batch_Using_Class_LID_Dis_Keras_Shuffle' % (batch_size, epochs)
+# 调用global batch lid
+exp_name = 'LID_BS%d_epochs%d_Batch_Using_Batch_LID_Dis_Keras_Shuffle' % (batch_size, epochs)
 n = 3
 # Model version
 # Orig paper: version = 1 (ResNet v1), Improved ResNet: version = 2 (ResNet v2)
@@ -70,7 +68,7 @@ elif version == 2:
     depth = n * 9 + 2
 
 # Model name, depth and version
-model_type = 'ResNet%dv%d' % (depth, version)
+# model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -254,8 +252,8 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                min_lr=0.5e-6)
 
 # lid load
-lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_Globale_Class_lid_K70.npy")
-# lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70_TEST1.npy")
+# lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_Globale_Class_lid_K70.npy")
+lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70_TEST1.npy")
 # # lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train,100 - drop_percent)).flatten()#Drop High
 # lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten()#Drop Low
 # x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
@@ -275,53 +273,66 @@ y_train_epoch = []
 # x_train = np.append(x_train_aug, x_train_ori)
 
 
+# def renew_train_dataset():
+#     alpha = source_percent;
+#     beta = target_percent;  # alpha表示抽取lid最高样本的比例，beta表示前面抽取的样本在新的样本集中占据了多少比例.beta>alpha
+#
+#     # 按照全局LID进行resample
+#     lid_high_idx = np.argwhere(lid_train > np.percentile(lid_train, 100 - alpha)).flatten()  # select high lid idx
+#     lid_low_idx = np.argwhere(lid_train <= np.percentile(lid_train, 100 - alpha)).flatten()  # select low lid idx
+#
+#     lid_high_aug_idx = np.append(lid_high_idx,
+#                                  np.random.choice(lid_high_idx, int(train_num * ((beta - alpha) / 100)), replace=True))
+#     lid_low_aug_idx = np.random.choice(lid_low_idx, int(train_num * (1 - beta / 100)), replace=False)
+#
+#     # 按照各类别LID进行resample
+#     # lid_sorted_idx = np.argsort(-lid_train) # 从大到小对LID排序，记录其下标。
+#     # y_train_lid_sorted = np.argmax(y_train[lid_sorted_idx],axis=1)
+#     # lid_high_aug_idx=[]
+#     # lid_low_aug_idx = []
+#     # for cls in range(num_classes):
+#     #     cls_lid_sorted_idx = lid_sorted_idx[y_train_lid_sorted==cls]
+#     #     cls_train_num=len(cls_lid_sorted_idx)
+#     #     lid_high_idx = cls_lid_sorted_idx[:int(cls_train_num*source_percent/100)]
+#     #     lid_low_idx = cls_lid_sorted_idx[int(cls_train_num*source_percent/100):]
+#     #     # print("before aug",len(lid_high_aug_idx),len(lid_low_aug_idx))
+#     #     lid_high_aug_idx.extend(lid_high_idx)
+#     #     lid_high_aug_idx.extend(np.random.choice(lid_high_idx, int(cls_train_num * ((beta - alpha) / 100)),replace=True))
+#     #     lid_low_aug_idx.extend(np.random.choice(lid_low_idx,int(cls_train_num * (1 - beta / 100)), replace=False))
+#         # print("after aug", len(lid_high_aug_idx), len(lid_low_aug_idx),"type",type(lid_low_aug_idx[0]))
+#
+#     # print('lid_high_aug_idx', len(lid_high_aug_idx))
+#     # print('lid_low_aug_idx', len(lid_low_aug_idx))
+#
+#
+#     new_selected_index = np.append(lid_high_aug_idx,lid_low_aug_idx)
+#     new_selected_x_train = x_train[new_selected_index]
+#     new_selected_y_train = y_train[new_selected_index]
+#
+#     not_selected_idx = np.delete(np.arange(train_num),new_selected_index)
+#
+#     # print('not_selected_idx',not_selected_idx)
+#     # print('not_selected_idx shape', not_selected_idx.shape)
+#     # import ipdb;
+#     # ipdb.set_trace()
+#     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
+#     global x_train_epoch
+#     x_train_epoch = new_selected_x_train[mask]
+#     global y_train_epoch
+#     y_train_epoch = new_selected_y_train[mask]
+
 def renew_train_dataset():
-    alpha = source_percent;
-    beta = target_percent;  # alpha表示抽取lid最高样本的比例，beta表示前面抽取的样本在新的样本集中占据了多少比例.beta>alpha
-
     # 按照全局LID进行resample
-    lid_high_idx = np.argwhere(lid_train > np.percentile(lid_train, 100 - alpha)).flatten()  # select high lid idx
-    lid_low_idx = np.argwhere(lid_train <= np.percentile(lid_train, 100 - alpha)).flatten()  # select low lid idx
-
-    lid_high_aug_idx = np.append(lid_high_idx,
-                                 np.random.choice(lid_high_idx, int(train_num * ((beta - alpha) / 100)), replace=True))
-    lid_low_aug_idx = np.random.choice(lid_low_idx, int(train_num * (1 - beta / 100)), replace=False)
-
-    # 按照各类别LID进行resample
-    # lid_sorted_idx = np.argsort(-lid_train) # 从大到小对LID排序，记录其下标。
-    # y_train_lid_sorted = np.argmax(y_train[lid_sorted_idx],axis=1)
-    # lid_high_aug_idx=[]
-    # lid_low_aug_idx = []
-    # for cls in range(num_classes):
-    #     cls_lid_sorted_idx = lid_sorted_idx[y_train_lid_sorted==cls]
-    #     cls_train_num=len(cls_lid_sorted_idx)
-    #     lid_high_idx = cls_lid_sorted_idx[:int(cls_train_num*source_percent/100)]
-    #     lid_low_idx = cls_lid_sorted_idx[int(cls_train_num*source_percent/100):]
-    #     # print("before aug",len(lid_high_aug_idx),len(lid_low_aug_idx))
-    #     lid_high_aug_idx.extend(lid_high_idx)
-    #     lid_high_aug_idx.extend(np.random.choice(lid_high_idx, int(cls_train_num * ((beta - alpha) / 100)),replace=True))
-    #     lid_low_aug_idx.extend(np.random.choice(lid_low_idx,int(cls_train_num * (1 - beta / 100)), replace=False))
-        # print("after aug", len(lid_high_aug_idx), len(lid_low_aug_idx),"type",type(lid_low_aug_idx[0]))
-
-    # print('lid_high_aug_idx', len(lid_high_aug_idx))
-    # print('lid_low_aug_idx', len(lid_low_aug_idx))
-
-
-    new_selected_index = np.append(lid_high_aug_idx,lid_low_aug_idx)
-    new_selected_x_train = x_train[new_selected_index]
-    new_selected_y_train = y_train[new_selected_index]
-
-    not_selected_idx = np.delete(np.arange(train_num),new_selected_index)
-
+    noise = np.random.random_sample((train_num,))
+    lid_idx = np.argsort(lid_train+noise)
     # print('not_selected_idx',not_selected_idx)
     # print('not_selected_idx shape', not_selected_idx.shape)
     # import ipdb;
     # ipdb.set_trace()
-    mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
-    x_train_epoch = new_selected_x_train[mask]
+    x_train_epoch = x_train[lid_idx]
     global y_train_epoch
-    y_train_epoch = new_selected_y_train[mask]
+    y_train_epoch = y_train[lid_idx]
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
@@ -344,7 +355,7 @@ if not data_augmentation:
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
-              shuffle=True,
+              shuffle=False,
               callbacks=callbacks)
     # Baseline:
     # model.fit(x_train, y_train,

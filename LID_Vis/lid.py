@@ -34,13 +34,11 @@ def LID_elementwise(x, X, k):
 
 
 def LID(X, Y, k):
-    import time
-    start_time = time.time()
     # X, Y: [B, h, w], [B, l], ...
     sum_axis = tuple([i for i in range(2, len(X.shape) + 1)])
     XX = X.reshape(X.shape[0], 1, *X.shape[1:]) # XX指的是数据集中的其余点
     YY = Y.reshape(1, Y.shape[0], *Y.shape[1:]) # YY指的是reference point
-    dist_mat = np.sqrt(np.sum(np.square(XX - YY), axis=sum_axis))
+    dist_mat = np.power(np.sum(np.power(XX - YY, 2), axis=sum_axis), 0.5)
     dist_mat = np.where(dist_mat < 1e-10, 1e10, dist_mat)
 
     sorted_mat = np.sort(dist_mat, axis=1)
@@ -49,7 +47,6 @@ def LID(X, Y, k):
     mask = (dist_mat <= r_max).astype(np.float)
 
     est = -1 / (1 / k * np.sum(np.log(dist_mat) * mask, axis=1, keepdims=True) - np.log(r_max))
-    print('LID CPU Time:',time.time()-start_time)
     return est.reshape(-1)
 
 
@@ -70,40 +67,44 @@ def lid(Mxy, k):
     return est
 
 
-from keras import backend as K
-import tensorflow as tf
-def GPU_lid_eval_keras(logits, k=20):
-    import time
-    start_time = time.time()
-    """
-    Calculate LID for a minibatch of training samples based on the outputs of the network.
+if __name__ == '__main__':
+    N = 10
+    k = 5
+    # uniform distribution
+    X = np.linspace(-1, 1, 3).reshape(-1, 1)
+    Y = np.random.randn(N).reshape(-1, 1)
+    est = LID(X, Y, k)
 
-    :param logits:
-    :param k:
-    :return:
-    """
-    print(logits.shape)
-    logits = K.constant(logits,dtype=tf.float32)
+    Mxy = distance(X, Y)
+    print(est)
+    # plt.figure(1)
+    # plt.subplot(211)
+    # plt.plot(X.reshape(-1), est)
+    # plt.ylim([0, 4])
+    # plt.title('Uniform Distribution: N = {}, k = {}'.format(N, k))
+    #
+    # plt.subplot(212)
+    # plt.hist(Y, bins=100, normed=True)
+    # plt.plot(X.reshape(-1), np.exp(-est))
+    # plt.plot([0.0, 0.0, 1.0, 1.0], [0.0, 1.0, 1.0, 0.0])
+    #
+    # # gaussian distribution
+    # plt.figure(2)
+    # X = np.arange(-5, 5, 0.01).reshape(-1, 1)
+    # Y = np.random.randn(N).reshape(-1, 1)
+    # est = LID(X, Y, k)
+    # plt.subplot(211)
+    # plt.plot(X.reshape(-1), est)
+    # plt.ylim([0, 4])
+    # plt.title('Gaussian Distribution: N = {}, k = {}'.format(N, k))
+    #
+    # plt.subplot(212)
+    # plt.plot(X.reshape(-1), np.exp(-est))
+    # z = gaussian_dist(X.reshape(-1), 0, 1)
+    # plt.hist(Y, bins=100, normed=True)
+    # plt.plot(X.reshape(-1), z)
+    # plt.ylim([0, 1])
+    # plt.show()
 
-    epsilon = 1e-12
-    batch_size = K.shape(logits)[0]
-    # n_samples = logits.get_shape().as_list()
-    # calculate pairwise distance
-    r = tf.reduce_sum(logits * logits, 1)
-    # turn r into column vector
-    r1 = K.reshape(r, [-1, 1])
-    D = r1 - 2 * tf.matmul(logits, K.transpose(logits)) + K.transpose(r1) + \
-        K.ones([batch_size, batch_size])
 
-    # find the k nearest neighbor
-    D1 = -K.sqrt(D)
-    D2, _ = tf.nn.top_k(D1, k=k, sorted=True)
-    D3 = -D2[:, 1:]  # skip the x-to-x distance 0 by using [,1:]
 
-    m = K.transpose(tf.multiply(tf.transpose(D3), 1.0 / D3[:, -1]))
-    v_log = tf.reduce_sum(K.log(m + epsilon), axis=1)  # to avoid nan
-    lids = -k / v_log
-
-    print('LID GPU Time:',time.time()-start_time)
-
-    return K.eval(lids)
