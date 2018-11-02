@@ -29,7 +29,7 @@ import numpy as np
 import os
 from sklearn.decomposition import PCA
 import lid
-from lid import LID
+from lid import LID,
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
