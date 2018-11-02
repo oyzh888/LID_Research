@@ -8,23 +8,24 @@ if(len(sys.argv)>4):
     lid_method = (sys.argv[3])
     drop_percent = int(sys.argv[4])
 else:
-    print('Wrong Params')
-    exit()
-    dataset_name = 'MNIST'
+    # print('Wrong Params')
+    # exit()
+    dataset_name = 'CIFAR10'
     # dataset_name = 'CIFAR10'
-    model_name = 'Xception'
+    model_name = 'resNet'
     batch_size = 64  # orig paper trained all networks with batch_size=128
     # lid_method = 'lid_high'
     lid_method = 'random'
-    drop_percent = 5
+    drop_percent = 1
     # exit()
-work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
+# work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
+work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_DataDrop/LID_Exps')
 max_acc_log_path = work_path/'res.txt'
 convergence_epoch = 0
 
 # Training parameters
 batch_size = 64
-epochs = 50
+epochs = 20
 exp_name = '%s_%s_%d_%s_%d_%d' % (dataset_name,model_name,batch_size,lid_method,drop_percent,epochs)
 
 
@@ -138,11 +139,14 @@ selected_sample_idx = []
 
 if lid_method == 'random':
     for i in range(int(train_num/batch_size)):
+        mask_batch=[]
         if ((i + 1) * batch_size < train_num):
             mask_batch = np.arange(i * batch_size, (i + 1) * batch_size)  # 一个样本下标仅出现一次,顺序训练
         else:
             mask_batch = np.arange(i * batch_size, train_num)
-        selected_sample_idx.extend(np.random.choice(mask_batch,int(batch_size*(1-drop_percent/100))))
+        selected_sample_idx.extend(np.random.choice(mask_batch,int(batch_size*(1-drop_percent/100)),replace=True))
+        # selected_sample_idx.extend(
+        #     np.random.choice(mask_batch, mask_batch, replace=False))
 else:
     lid_k = int(np.log(batch_size))
     ###Sorted
@@ -150,18 +154,19 @@ else:
     lid_train = get_lid_by_batch(torch_x_train, torch_x_train,
                                   lid_k, batch_size=batch_size)
     if(lid_method == 'lid_low'):
-            lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low
+        lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low
     if (lid_method == 'lid_high'):
         lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train, 100 - drop_percent)).flatten()  # Drop Low
     selected_sample_idx = lid_selected_idx.tolist()
 
-
-print(len(selected_sample_idx))
+# import ipdb;ipdb.set_trace()
+print("drop",len(selected_sample_idx))
 # import ipdb; ipdb.set_trace()
 # print(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
 selected_sample_idx.extend(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
 selected_x_train = x_train[selected_sample_idx]
 selected_y_train = y_train[selected_sample_idx]
+print("resample",len(selected_sample_idx))
 
 
 # Convert class vectors to binary class matrices.
@@ -203,7 +208,7 @@ print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
 
 
-#### Final result output
+### Final result output
 final_accuracy = scores[1]
 final_loss = scores[0]
 
