@@ -29,11 +29,12 @@ import numpy as np
 import os
 from sklearn.decomposition import PCA
 import lid
-from lid import LID
+from lid import LID, get_lid_by_batch
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
 from pathlib import *
+import torch
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -51,7 +52,7 @@ drop_percent = 5
 drop_alg='Resample_DL%d' % drop_percent
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
-exp_name = 'LID_%s_resNet_Cifar10_BS%d_epochs%d' % (drop_alg,batch_size, epochs)
+exp_name = 'LID_DataDrop_%s_resNet_Cifar10_BS%d_epochs%d' % (drop_alg,batch_size, epochs)
 
 # Model parameter
 # ----------------------------------------------------------------------------
@@ -85,7 +86,7 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../../Cifar10_LID_DataDrop')
+work_path=Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -266,20 +267,27 @@ from keras.callbacks import TensorBoard
 callbacks = [lr_reducer, lr_scheduler,TensorBoard(
     log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 # lid load
-lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70.npy")
-# lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train,100 - drop_percent)).flatten()#Drop High
-lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten()#Drop Low
-x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
+# lid_train = np.load("/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research_local/nparray/Cifar10_ground_truth_dataset50000_BS5000_lid_K70.npy")
 
-# Re-sample
-sample_mask = np.random.choice(len(x_train),int(train_num*drop_percent/100), replace=False)
-x_train = np.append(x_train,x_train[sample_mask], axis=0)
-y_train = np.append(y_train,y_train[sample_mask], axis=0)
+if(True):
+    print()
+else:
+    lid_k = int(np.log(batch_size))
+    ###Ramdom
+    lid_train = get_lid_by_batch(torch.from_numpy(x_train), torch.from_numpy(x_train), lid_k, batch_size = batch_size)
+    ###Sorted
+    sorted_x_train = x_train[np.argsort(y_train)]
+    sorted_idx = get_lid_by_batch(torch.from_numpy(sorted_x_train), torch.from_numpy(sorted_x_train),
+                                  lid_k, batch_size = batch_size)
+    ###
+    lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train,drop_percent)).flatten() #Drop Low
+    x_train,y_train=x_train[lid_selected_idx],y_train[lid_selected_idx]
 
-# print('OYZH shape:', y_train.shape )
-# import ipdb; ipdb.set_trace()
 x_train_epoch = []
 y_train_epoch = []
+
+x_train_epoch = x_train
+y_train_epoch = y_train
 
 def renew_train_dataset():
     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
@@ -290,18 +298,19 @@ def renew_train_dataset():
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
-    renew_train_dataset()
+    # renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
-renew_train_dataset()
+# renew_train_dataset()
 # Run training, with or without data augmentation.
+
 if not data_augmentation:
     print('Not using data augmentation.')
     model.fit(x_train_epoch, y_train_epoch,
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
-              shuffle=False,
+              shuffle=True,
               callbacks=callbacks)
 
 # Score trained model.

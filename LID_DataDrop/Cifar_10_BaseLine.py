@@ -84,7 +84,7 @@ model_type = 'ResNet%dv%d' % (depth, version)
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../../Cifar10_LID_DataDrop')
+work_path=Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")

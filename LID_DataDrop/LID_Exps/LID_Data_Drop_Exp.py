@@ -8,14 +8,16 @@ if(len(sys.argv)>4):
     lid_method = (sys.argv[3])
     drop_percent = int(sys.argv[4])
 else:
-    # print('Wrong Params')
+    print('Wrong Params')
     # exit()
+    # dataset_name = 'MNIST'
     dataset_name = 'CIFAR10'
-    # dataset_name = 'CIFAR10'
+    # model_name = 'Xception'
     model_name = 'resNet'
     batch_size = 64  # orig paper trained all networks with batch_size=128
     # lid_method = 'lid_high'
-    lid_method = 'random'
+    lid_method = 'lid_high'
+
     drop_percent = 1
     # exit()
 # work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
@@ -153,14 +155,26 @@ else:
     torch_x_train = torch.from_numpy(np.reshape(x_train,(len(x_train),-1)))
     lid_train = get_lid_by_batch(torch_x_train, torch_x_train,
                                   lid_k, batch_size=batch_size)
-    if(lid_method == 'lid_low'):
-        lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low
-    if (lid_method == 'lid_high'):
-        lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train, 100 - drop_percent)).flatten()  # Drop Low
-    selected_sample_idx = lid_selected_idx.tolist()
+    #Batch Lid
+    for i in range(int(train_num / batch_size)):
+        if ((i + 1) * batch_size < train_num):
+            mask_batch = np.arange(i * batch_size, (i + 1) * batch_size)  # 一个样本下标仅出现一次,顺序训练
+        else:
+            mask_batch = np.arange(i * batch_size, train_num)
+        if (lid_method == 'lid_low'):
+            lid_selected_idx = np.argwhere(lid_train[mask_batch] > np.percentile(lid_train[mask_batch], drop_percent)).flatten()  # Drop Low
+        if (lid_method == 'lid_high'):
+            lid_selected_idx = np.argwhere(lid_train[mask_batch] < np.percentile(lid_train[mask_batch], 100 - drop_percent)).flatten()  # Drop Low
+        selected_sample_idx.extend(np.random.choice(mask_batch, int(batch_size * (1 - drop_percent / 100))))
+    # ### Global lid
+    # if (lid_method == 'lid_low'):
+    #     lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low
+    # if (lid_method == 'lid_high'):
+    #     lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train, 100 - drop_percent)).flatten()  # Drop Low
+    # selected_sample_idx = lid_selected_idx.tolist()
 
-# import ipdb;ipdb.set_trace()
-print("drop",len(selected_sample_idx))
+
+print('selected sample num:', len(selected_sample_idx))
 # import ipdb; ipdb.set_trace()
 # print(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
 selected_sample_idx.extend(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
@@ -203,7 +217,7 @@ model.fit(selected_x_train, selected_y_train,
           callbacks=callbacks)
 
 # Score trained model.
-scores = model.evaluate(x_test, y_test, verbose=1)
+scores = model.evaluate(x_test, y_test, verbose=1,batch_size=batch_size*4)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
 
@@ -212,10 +226,10 @@ print('Test accuracy:', scores[1])
 final_accuracy = scores[1]
 final_loss = scores[0]
 
-print("%s\t%s\t%s\t%s\t%s\t%s\t%s" % ("exp_name", 'final_accuracy', 'final_loss',
-                                  'converage_epoch', 'lid_method', 'drop_percent', 'model_name' ))
-max_acc_log_line = "%s\t%f\t%f\t%d\t%s\t%d\t%s" % (exp_name, final_accuracy, final_loss, convergence_epoch, lid_method, drop_percent, model_name)
+print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % ("exp_name", 'final_accuracy', 'final_loss',
+                                  'converage_epoch', 'lid_method', 'drop_percent', 'model_name', 'dataset_name' ))
+max_acc_log_line = "%s\t%f\t%f\t%d\t%s\t%d\t%s\t%s" % (exp_name, final_accuracy, final_loss, convergence_epoch, lid_method, drop_percent, model_name, dataset_name)
 print(max_acc_log_line)
-# print("%s\t%s\t%s\t%s\t%s\t%s\t%s" % ("exp_name", 'final_accuracy', 'final_loss',
-#                                   'converage_epoch', 'lid_method', 'drop_percent', 'model_name' ),file=open(max_acc_log_path.__str__(), 'a'))
+# print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % ("exp_name", 'final_accuracy', 'final_loss',
+#                                   'converage_epoch', 'lid_method', 'drop_percent', 'model_name','dataset_name' ),file=open(max_acc_log_path.__str__(), 'a'))
 print(max_acc_log_line, file=open(max_acc_log_path.__str__(), 'a'))
