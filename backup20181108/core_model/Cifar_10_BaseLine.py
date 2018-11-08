@@ -1,10 +1,25 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+"""Trains a ResNet on the CIFAR10 dataset.
+ResNet v1
+[a] Deep Residual Learning for Image Recognition
+https://arxiv.org/pdf/1512.03385.pdf
+ResNet v2
+[b] Identity Mappings in Deep Residual Networks
+https://arxiv.org/pdf/1603.05027.pdf
+"""
+
 from __future__ import print_function
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation
 from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import ReduceLROnPlateau, LambdaCallback
 from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
@@ -17,30 +32,25 @@ import lid
 from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
+import sys
+from pathlib import *
 
-# coding: utf-8
-
-
-"""Trains a ResNet on the CIFAR10 dataset.
-
-ResNet v1
-[a] Deep Residual Learning for Image Recognition
-https://arxiv.org/pdf/1512.03385.pdf
-
-ResNet v2
-[b] Identity Mappings in Deep Residual Networks
-https://arxiv.org/pdf/1603.05027.pdf
-"""
-
+if(len(sys.argv)!=1):
+    order = int(sys.argv[1])
+    batch_size = order
+else:
+    batch_size = 128  # orig paper trained all networks with batch_size=128
 
 # Training parameters
-batch_size = 128  # orig paper trained all networks with batch_size=128
+# batch_size = 128  # orig paper trained all networks with batch_size=128
 epochs = 20
 data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
+# exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
+exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Shuffle' % (batch_size, epochs)
 
 # Model parameter
 # ----------------------------------------------------------------------------
@@ -73,19 +83,18 @@ model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
+(x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
+work_path=Path('../../../Cifar10_LID_DataDrop')
+# root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
+# if not (os.path.exists(root_path)): print("augmentation data not found!")
+# x_train = np.load(root_path+"/aug_train_x.npy")
+# y_train = np.load(root_path+"/aug_train_y.npy")
 # Input image dimensions.
 input_shape = x_train.shape[1:]
 
 # Normalize data.
 x_train = x_train.astype('float32') / 255
 x_test = x_test.astype('float32') / 255
-val_num = 5000
-x_val = x_train[:val_num]
-y_val = y_train[:val_num]
-x_train = x_train[val_num:]
-y_train = y_train[val_num:]
-
 
 # If subtract pixel mean is enabled
 if subtract_pixel_mean:
@@ -93,13 +102,14 @@ if subtract_pixel_mean:
     x_train -= x_train_mean
     x_test -= x_train_mean
 
+# Convert class vectors to binary class matrices.
+y_train = keras.utils.to_categorical(y_train, num_classes)
+y_test = keras.utils.to_categorical(y_test, num_classes)
 
 train_num,test_num = x_train.shape[0],x_test.shape[0]
 
 print('x_train shape:', x_train.shape)
 print(x_train.shape[0], 'train samples')
-print('x_val shape:', x_val.shape)
-print(x_val.shape[0], 'x_val samples')
 print(x_test.shape[0], 'test samples')
 print('y_train shape:', y_train.shape)
 
@@ -117,16 +127,6 @@ def lr_schedule(epoch):
     print('Learning rate: ', lr)
     return lr
 
-# base_lr = 1e-6
-# max_lr = 1e-3
-# step_size = 5
-
-# def lr_schedule_cycle(iterations):
-#     cycle = np.floor(1+iterations/(2*step_size))
-#     x = np.abs(iterations/step_size - 2*cycle + 1)
-#     lr = base_lr + (max_lr-base_lr)*np.maximum(0, (1-x))/float(2**(cycle-1))
-#     return lr
-
 def resnet_layer(inputs,
                  num_filters=16,
                  kernel_size=3,
@@ -136,7 +136,6 @@ def resnet_layer(inputs,
                  conv_first=True,
                  name = None):
     """2D Convolution-Batch Normalization-Activation stack builder
-
     # Arguments
         inputs (tensor): input tensor from input image or previous layer
         num_filters (int): Conv2D number of filters
@@ -146,7 +145,6 @@ def resnet_layer(inputs,
         batch_normalization (bool): whether to include batch normalization
         conv_first (bool): conv-bn-activation (True) or
             activation-bn-conv (False)
-
     # Returns
         x (tensor): tensor as input to the next layer
     """
@@ -175,7 +173,6 @@ def resnet_layer(inputs,
 
 def resnet_v1(input_shape, depth, num_classes=10):
     """ResNet Version 1 Model builder [a]
-
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
     Last ReLU is after the shortcut connection.
     At the beginning of each stage, the feature map size is halved (downsampled)
@@ -192,12 +189,11 @@ def resnet_v1(input_shape, depth, num_classes=10):
     ResNet44 0.66M
     ResNet56 0.85M
     ResNet110 1.7M
-
+x`
     # Arguments
         input_shape (tensor): shape of input image tensor
         depth (int): number of core convolutional layers
         num_classes (int): number of classes (CIFAR10 has 10)
-
     # Returns
         model (Model): Keras model instance
     """
@@ -247,116 +243,53 @@ def resnet_v1(input_shape, depth, num_classes=10):
     return model
 
 
-
-# Train PCA & Find LID
-
-# 以validation各个类别作为pca分析的输入，将训练集中各个类别依照该pca进行降维，使得每个类别的降维方式一致。
-# 每个类别降维之后，在类别内部根据LID值寻找异常点，将异常点进行记录。
-cls_num = 10
-# outlier_mask=np.zeros(train_num,dtype=int)
-new_x_train = []
-new_y_train = []
-
-for cls in range(cls_num):
-    print('Start class', cls)
-    pca = PCA(n_components=4*4*3,svd_solver='full')
-    selected_x_val = x_val[y_val.flatten()==cls]
-    pca.fit(selected_x_val.reshape(selected_x_val.shape[0],-1))
-    # print("PCA train finish")
-    selected_x_train = x_train[y_train.flatten()==cls]
-    selected_y_train = y_train[y_train.flatten()==cls]
-    x_train_temp = pca.transform(selected_x_train.reshape(selected_x_train.shape[0],-1))
-    k = int(batch_size/10)
-    for i in range(int(selected_x_train.shape[0]/batch_size)):
-        train_temp_batch_mask = np.random.choice(selected_x_train.shape[0],batch_size)
-        selected_x_train_batch = selected_x_train[train_temp_batch_mask]
-        selected_y_train_batch = selected_y_train[train_temp_batch_mask]
-        # x_train_temp_batch = x_train_temp[train_temp_batch_mask]
-        # y_train_temp_batch = selected_y_train[train_temp_batch_mask]
-        # dis = LID(x_train_temp_batch, x_train_temp_batch, k)  # 也可以和validation计算
-        # dis_idx = np.argwhere(dis < np.percentile(dis,95)).flatten()    # 将距离最大的5%的数据剔除掉
-        new_x_train.extend(selected_x_train_batch)
-        new_y_train.extend(selected_y_train_batch)
-
-# Convert class vectors to binary class matrices.
-y_train = keras.utils.to_categorical(y_train, num_classes)
-y_test = keras.utils.to_categorical(y_test, num_classes)
-
-
-print("Get rid of outlier")
-
-
 # Define Model
-
-
-#inception_resnet_v2
-model = keras.applications.inception_resnet_v2.InceptionResNetV2(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
-
-#DenseNet(This is an imagenet weight pretrain example, which may not work when dataset is cifar10)
-# model = keras.applications.DenseNet121(include_top=True,
-#                 weights='imagenet',
-#                 input_tensor=None,
-#                 input_shape=None,
-#                 pooling=None,
-#                 classes=1000)
 
 #ResNet:
 model = resnet_v1(input_shape=input_shape, depth=depth)
-#Xception:
-model = keras.applications.xception.Xception(include_top=True,
-                                            weights=None,
-                                            input_tensor=None,
-                                            input_shape=None,
-                                            pooling=None,
-                                            classes=num_classes)
 
 model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
-              metrics=['accuracy'])
+              metrics=['accuracy', 'top_k_categorical_accuracy'])
 model.summary()
 print(model_type)
 
 # Prepare model model saving directory.
-save_dir = os.path.join(os.getcwd(), 'saved_models')
-model_name = 'cifar10_%s_model.{epoch:03d}.h5' % model_type
-if not os.path.isdir(save_dir):
-    os.makedirs(save_dir)
-filepath = os.path.join(save_dir, model_name)
-
-# Prepare callbacks for model saving and for learning rate adjustment.
-checkpoint = ModelCheckpoint(filepath=filepath,
-                             monitor='val_acc',
-                             verbose=1,
-                             save_best_only=True)
-print("lr_scheduler!")
 lr_scheduler = LearningRateScheduler(lr_schedule)
-print("lr_reducer!")
+
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                cooldown=0,
                                patience=5,
                                min_lr=0.5e-6)
 from keras.callbacks import TensorBoard
-callbacks = [checkpoint, lr_reducer, lr_scheduler,TensorBoard(log_dir='./TB_logdir/Cifar10_ClassDropoutBaseline_Batch128_PCA2*2*3',write_images=False)]
+callbacks = [lr_reducer, lr_scheduler,TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
+x_train_epoch = []
+y_train_epoch = []
+def renew_train_dataset():
+    mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
+    global x_train_epoch
+    x_train_epoch = x_train[mask]
+    global y_train_epoch
+    y_train_epoch = y_train[mask]
 
-# # Train
+def on_epoch_end(epoch, logs):
+    print('End of epoch')
+    renew_train_dataset()
 
-
-print("Train!!!")
+on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+renew_train_dataset()
 # Run training, with or without data augmentation.
 if not data_augmentation:
     print('Not using data augmentation.')
-    model.fit(x_train, y_train,
+    model.fit(x_train_epoch, y_train_epoch,
               batch_size=batch_size,
               epochs=epochs,
               validation_data=(x_test, y_test),
               shuffle=True,
               callbacks=callbacks)
+
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
