@@ -19,8 +19,8 @@ else:
     lid_method = 'lid_high'
     drop_percent = 1
 # work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
-work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_DataDrop/LID_Exps/')
-max_acc_log_path = work_path/'res_11_2_random.txt'
+work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_DataDrop/LID_Exps')
+max_acc_log_path = work_path/'res.txt'
 convergence_epoch = 0
 
 # Training parameters
@@ -193,50 +193,6 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
 # 按照Class计算LID
 print("LOAD CLASS LID")
 selected_sample_idx = []
-
-if lid_method == 'random':
-    for i in range(int(train_num/batch_size)):
-        mask_batch=[]
-        if ((i + 1) * batch_size < train_num):
-            mask_batch = np.arange(i * batch_size, (i + 1) * batch_size)  # 一个样本下标仅出现一次,顺序训练
-        else:
-            mask_batch = np.arange(i * batch_size, train_num)
-        selected_sample_idx.extend(np.random.choice(mask_batch,int(batch_size*(1-drop_percent/100)),replace=True))
-        # selected_sample_idx.extend(
-        #     np.random.choice(mask_batch, mask_batch, replace=False))
-else:
-    lid_k = int(np.log(batch_size))
-    ###Sorted
-    torch_x_train = torch.from_numpy(np.reshape(x_train,(len(x_train),-1)))
-    lid_train = get_lid_by_batch(torch_x_train, torch_x_train,
-                                  lid_k, batch_size=batch_size)
-    #Batch Lid
-    for i in range(int(train_num / batch_size)):
-        if ((i + 1) * batch_size < train_num):
-            mask_batch = np.arange(i * batch_size, (i + 1) * batch_size)  # 一个样本下标仅出现一次,顺序训练
-        else:
-            mask_batch = np.arange(i * batch_size, train_num)
-        if (lid_method == 'lid_low'):
-            lid_selected_idx = np.argwhere(lid_train[mask_batch] > np.percentile(lid_train[mask_batch], drop_percent)).flatten()  # Drop Low
-        if (lid_method == 'lid_high'):
-            lid_selected_idx = np.argwhere(lid_train[mask_batch] < np.percentile(lid_train[mask_batch], 100 - drop_percent)).flatten()  # Drop Low
-        selected_sample_idx.extend(mask_batch[lid_selected_idx])
-    selected_sample_idx = selected_sample_idx.tolist()
-    # ### Global lid
-    # if (lid_method == 'lid_low'):
-    #     lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low
-    # if (lid_method == 'lid_high'):
-    #     lid_selected_idx = np.argwhere(lid_train < np.percentile(lid_train, 100 - drop_percent)).flatten()  # Drop Low
-    # selected_sample_idx = lid_selected_idx.tolist()
-
-
-print('selected sample num:', len(selected_sample_idx))
-# import ipdb; ipdb.set_trace()
-# print(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
-selected_sample_idx.extend(np.random.choice(selected_sample_idx,train_num-len(selected_sample_idx)))
-selected_x_train = x_train[selected_sample_idx]
-selected_y_train = y_train[selected_sample_idx]
-print("resample",len(selected_sample_idx))
 
 ground_truth_class_lid = np.load('Cifar10_ground_truth_dataset50000_BS5000_Globale_Class_lid_K70.npy')
 ground_truth_class_lid_idx = np.argwhere(ground_truth_class_lid < np.percentile(ground_truth_class_lid, 100 - drop_percent)).flatten()
