@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from pathlib import *
 
 
-exp_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/LID_Research/Cifar10_epoch_Lid/LID_Epoch_NP/conv2d_17_LIDEpoch_resNet_Cifar10_BS128_epochs100')
+exp_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Cifar10_epoch_Lid/LID_Epoch_NP/conv2d_17_LIDEpoch_resNet_Cifar10_BS128_epochs100')
 
 train_np_path = exp_path/'train_lid.npy'
 test_np_path = exp_path/'test_lid.npy'
@@ -54,7 +54,7 @@ plt.close()
 # print(train_lids_epoch[0])
 # print(train_lids_epoch[0][0])
 # print(train_lids_epoch.shape)
-train_lids_epoch = train_lids_epoch[0:2][:50000]
+train_lids_epoch = train_lids_epoch[0][:50000]
 # for var in train_lids_epoch:
 print(np.shape(x))
 print(np.shape(train_lids_epoch))

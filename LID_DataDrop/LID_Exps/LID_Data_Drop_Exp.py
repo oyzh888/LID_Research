@@ -21,8 +21,8 @@ else:
     drop_percent = 1
     # exit()
 # work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
-work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_DataDrop/LID_Exps')
-max_acc_log_path = work_path/'res.txt'
+work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_DataDrop/LID_Exps/')
+max_acc_log_path = work_path/'res_11_2_random.txt'
 convergence_epoch = 0
 
 # Training parameters
@@ -165,7 +165,8 @@ else:
             lid_selected_idx = np.argwhere(lid_train[mask_batch] > np.percentile(lid_train[mask_batch], drop_percent)).flatten()  # Drop Low
         if (lid_method == 'lid_high'):
             lid_selected_idx = np.argwhere(lid_train[mask_batch] < np.percentile(lid_train[mask_batch], 100 - drop_percent)).flatten()  # Drop Low
-        selected_sample_idx.extend(np.random.choice(mask_batch, int(batch_size * (1 - drop_percent / 100))))
+        selected_sample_idx.extend(mask_batch[lid_selected_idx])
+    selected_sample_idx = selected_sample_idx.tolist()
     # ### Global lid
     # if (lid_method == 'lid_low'):
     #     lid_selected_idx = np.argwhere(lid_train > np.percentile(lid_train, drop_percent)).flatten()  # Drop Low

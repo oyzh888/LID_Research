@@ -1,18 +1,5 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-# In[1]:
-
-
-"""Trains a ResNet on the CIFAR10 dataset.
-ResNet v1
-[a] Deep Residual Learning for Image Recognition
-https://arxiv.org/pdf/1512.03385.pdf
-ResNet v2
-[b] Identity Mappings in Deep Residual Networks
-https://arxiv.org/pdf/1603.05027.pdf
-"""
-
 from __future__ import print_function
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation
@@ -28,13 +15,12 @@ from keras.datasets import cifar10
 import numpy as np
 import os
 from sklearn.decomposition import PCA
-import lid
-from lid import LID
+from lid import *
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
 from pathlib import *
-
+import math
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
     batch_size = order
@@ -43,29 +29,14 @@ else:
 
 # Training parameters
 # batch_size = 128  # orig paper trained all networks with batch_size=128
-epochs = 20
+epochs = 2
 data_augmentation = False
 num_classes = 10
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
 # exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
-exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d_Duplicate1' % (batch_size, epochs)
-
-# Model parameter
-# ----------------------------------------------------------------------------
-#           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
-# Model     |  n   | ResNet v1 | ResNet v1 | ResNet v2 | ResNet v2 | GTX1080Ti
-#           |v1(v2)| %Accuracy | %Accuracy | %Accuracy | %Accuracy | v1 (v2)
-# ----------------------------------------------------------------------------
-# ResNet20  | 3 (2)| 92.16     | 91.25     | -----     | -----     | 35 (---)
-# ResNet32  | 5(NA)| 92.46     | 92.49     | NA        | NA        | 50 ( NA)
-# ResNet44  | 7(NA)| 92.50     | 92.83     | NA        | NA        | 70 ( NA)
-# ResNet56  | 9 (6)| 92.71     | 93.03     | 93.01     | NA        | 90 (100)
-# ResNet110 |18(12)| 92.65     | 93.39+-.16| 93.15     | 93.63     | 165(180)
-# ResNet164 |27(18)| -----     | 94.07     | -----     | 94.54     | ---(---)
-# ResNet1001| (111)| -----     | 92.39     | -----     | 95.08+-.14| ---(---)
-# ---------------------------------------------------------------------------
+exp_name = 'Debug_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
 n = 3
 
 # Model version
@@ -82,9 +53,9 @@ elif version == 2:
 model_type = 'ResNet%dv%d' % (depth, version)
 
 # Load the CIFAR10 data.
-(xXception_train, y_train), (x_test, y_test) = cifar10.load_data()
+(x_train, y_train), (x_test, y_test) = cifar10.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('../../Cifar10_LID_DataDrop')
+work_path=Path('../Cifar10_epoch_Lid')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -135,19 +106,6 @@ def resnet_layer(inputs,
                  batch_normalization=True,
                  conv_first=True,
                  name = None):
-    """2D Convolution-Batch Normalization-Activation stack builder
-    # Arguments
-        inputs (tensor): input tensor from input image or previous layer
-        num_filters (int): Conv2D number of filters
-        kernel_size (int): Conv2D square kernel dimensions
-        strides (int): Conv2D square stride dimensions
-        activation (string): activation name
-        batch_normalization (bool): whether to include batch normalization
-        conv_first (bool): conv-bn-activation (True) or
-            activation-bn-conv (False)
-    # Returns
-        x (tensor): tensor as input to the next layer
-    """
     conv = Conv2D(num_filters,
                   kernel_size=kernel_size,
                   strides=strides,
@@ -172,31 +130,6 @@ def resnet_layer(inputs,
 
 
 def resnet_v1(input_shape, depth, num_classes=10):
-    """ResNet Version 1 Model builder [a]
-    Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
-    Last ReLU is after the shortcut connection.
-    At the beginning of each stage, the feature map size is halved (downsampled)
-    by a convolutional layer with strides=2, while the number of filters is
-    doubled. Within each stage, the layers have the same number filters and the
-    same number of filters.
-    Features maps sizes:
-    stage 0: 32x32, 16
-    stage 1: 16x16, 32
-    stage 2:  8x8,  64
-    The Number of parameters is approx the same as Table 6 of [a]:
-    ResNet20 0.27M
-    ResNet32 0.46M
-    ResNet44 0.66M
-    ResNet56 0.85M
-    ResNet110 1.7M
-x`
-    # Arguments
-        input_shape (tensor): shape of input image tensor
-        depth (int): number of core convolutional layers
-        num_classes (int): number of classes (CIFAR10 has 10)
-    # Returns
-        model (Model): Keras model instance
-    """
     if (depth - 2) % 6 != 0:
         raise ValueError('depth should be 6n+2 (eg 20, 32, 44 in [a])')
     # Start model definition.
@@ -261,12 +194,34 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                cooldown=0,
                                patience=5,
                                min_lr=0.5e-6)
-from keras.callbacks import TensorBoard
-callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
-
 x_train_epoch = []
 y_train_epoch = []
+
+from progressbar import *
+def get_lid(outputs_predict):
+    batch_size_lid = batch_size
+    # import ipdb;
+    # ipdb.set_trace()
+    flatten_shape = outputs_predict.shape[0]
+    outputs_predict_flatten = np.reshape(outputs_predict, newshape=(flatten_shape, -1))
+    outputs_predict_lid = np.zeros(flatten_shape)
+    lid_k = int(np.sqrt(batch_size_lid))
+    batch_num = int(flatten_shape / batch_size_lid)
+    mask_batch = []
+    pbar = ProgressBar()
+    for i in pbar(range(batch_num)):
+        if((i+1)*batch_size_lid<flatten_shape):
+            mask_batch = np.arange(i*batch_size_lid,(i+1)*batch_size_lid)  # 一个样本下标仅出现一次,顺序训练
+        else:
+            mask_batch = np.arange(i*batch_size_lid,flatten_shape)
+        # import ipdb;ipdb.set_trace()
+        # print(mask_batch)
+        dis = LID(outputs_predict_flatten[mask_batch], outputs_predict_flatten[mask_batch], lid_k)
+        dis = GPU_lid_eval_keras(outputs_predict_flatten[mask_batch], lid_k)
+
+        outputs_predict_lid[mask_batch] = dis
+    return outputs_predict_lid
+
 def renew_train_dataset():
     mask = np.random.choice(x_train.shape[0],x_train.shape[0],replace=False)
     global x_train_epoch
@@ -274,11 +229,34 @@ def renew_train_dataset():
     global y_train_epoch
     y_train_epoch = y_train[mask]
 
+epoch_lids_train = []
+epoch_lids_test = []
 def on_epoch_end(epoch, logs):
+    layer_name = 'average_pooling2d_1'
+    intermediate_layer_model = Model(inputs=model.input,
+                                     outputs=model.get_layer(layer_name).output)
+
+    intermediate_output = intermediate_layer_model.predict(x_train)
+
+    print(x_train.shape)
+    print(intermediate_output.shape)
+    lids_of_train = get_lid(intermediate_output)
+
+
+    intermediate_output = intermediate_layer_model.predict(x_test)
+    lids_of_test = get_lid(intermediate_output)
+
+    epoch_lids_train.append(lids_of_train)
+    epoch_lids_test.append(lids_of_test)
+    print("LID Averge:",np.average(lids_of_train))
     print('End of epoch')
     renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
+from keras.callbacks import TensorBoard
+callbacks = [lr_reducer, lr_scheduler, on_epoch_end_callback, TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
+
 renew_train_dataset()
 # Run training, with or without data augmentation.
 if not data_augmentation:
@@ -290,6 +268,11 @@ if not data_augmentation:
               shuffle=False,
               callbacks=callbacks)
 
+path_to_create = work_path/'LID_Epoch_NP'/exp_name
+path_to_create.mkdir(parents=True)
+
+np.save(work_path/'LID_Epoch_NP'/exp_name/'train_lid.npy',epoch_lids_train)
+np.save(work_path/'LID_Epoch_NP'/exp_name/'test_lid.npy',epoch_lids_test)
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
