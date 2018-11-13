@@ -79,13 +79,9 @@ def low_speed_LID_fast(X, Y, k):
 
 # using pytorch to accelerate
 def LID(X, Y, k):
-    # import ipdb;ipdb.set_trace()
-    # X, Y: [B, h, w], [B, l], ...
     sum_axis = tuple([i for i in range(2, len(X.shape) + 1)])
     XX = X.reshape(X.shape[0], 1, *X.shape[1:]) # XX指的是数据集中的其余点
     YY = Y.reshape(1, Y.shape[0], *Y.shape[1:]) # YY指的是reference point
-    # XX = torch.from_numpy(XX)
-    # YY = torch.from_numpy(YY)
     dist_mat = torch.pow(torch.sum(torch.pow(XX - YY, 2), dim=sum_axis), 0.5)
     dist_mat = torch.where(dist_mat < 1e-10, torch.full_like(dist_mat,1e10), dist_mat)
     sorted_mat = torch.sort(dist_mat, dim=1)

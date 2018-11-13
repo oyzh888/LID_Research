@@ -85,12 +85,12 @@ parser.add_argument('--net', default='./model/Resnet18.pth', help="path to net (
 args = parser.parse_args()
 
 # 超参数设置
-EPOCH = 135   #遍历数据集次数
+EPOCH = 20   #遍历数据集次数
 pre_epoch = 0  # 定义已经遍历数据集的次数
 BATCH_SIZE = 128      #批处理尺寸(batch_size)
 LR = 0.1        #学习率
 
-# 准备数据集并预处理
+# 准备数据集并预处理,data augmentation
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),  #先四周填充0，在吧图像随机裁剪成32*32
     transforms.RandomHorizontalFlip(),  #图像一半的概率翻转，一半的概率不翻转
@@ -107,7 +107,7 @@ trainset = torchvision.datasets.CIFAR10(root='~/.keras/datasets/', train=True, d
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)   #生成一个个batch进行批训练，组成batch的时候顺序打乱取
 
 testset = torchvision.datasets.CIFAR10(root='~/.keras/datasets/', train=False, download=True, transform=transform_test)
-testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
+testloader = torch.utils.data.DataLoader(testset, batch_size=128, shuffle=False, num_workers=2)
 # Cifar-10的标签
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -130,7 +130,7 @@ if __name__ == "__main__":
                 sum_loss = 0.0
                 correct = 0.0
                 total = 0.0
-                for i, data in enumerate(trainloader, 0):
+                for i, data in enumerate(trainloader, start = 0):
                     # 准备数据
                     length = len(trainloader)
                     inputs, labels = data

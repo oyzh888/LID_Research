@@ -221,10 +221,8 @@ x`
 
     ####Add LID Feature Here:
     selected_layer_out = y
-    # # lid_feature = lid(y)
+    # # lid_feature = lid(selected_layer_out)
     lid_feature = selected_layer_out
-    # lid_feature = Dense(100)(lid_feature)
-    # lid_feature = Activation('relu')(lid_feature)
     global LID_loss
     LID_loss= K.sum(K.flatten(lid_feature))
     ###

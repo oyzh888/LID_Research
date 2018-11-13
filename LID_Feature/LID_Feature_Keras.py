@@ -15,7 +15,7 @@ https://arxiv.org/pdf/1603.05027.pdf
 
 from __future__ import print_function
 import keras
-from keras.layers import Dense, Conv2D, BatchNormalization, Activation
+from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Lambda
 from keras.layers import AveragePooling2D, Input, Flatten, Concatenate
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
@@ -25,6 +25,7 @@ from keras.regularizers import l2
 from keras import backend as K
 from keras.models import Model
 from keras.datasets import cifar10
+import keras.backend as K
 import numpy as np
 import os
 from sklearn.decomposition import PCA
@@ -32,6 +33,8 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
 from pathlib import *
+import torch
+import tensorflow as tf
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -151,6 +154,43 @@ def resnet_layer(inputs,
         x = conv(x)
     return x
 
+# 输入：X（计算点）,Y(参考点),batch_size
+# 输出：mat. mat记录了X的距离最近的k个点与最远点的距离比，以及最远点的距离。
+def LID_torch(X, Y, k):
+    # import ipdb;ipdb.set_trace()
+    sum_axis = tuple([i for i in range(2, len(X.shape) + 1)])
+    XX = X.reshape(X.shape[0], 1, *X.shape[1:]) # XX指的是数据集中的其余点
+    YY = Y.reshape(1, Y.shape[0], *Y.shape[1:]) # YY指的是reference point
+    # XX = torch.from_numpy(XX)
+    # YY = torch.from_numpy(YY)
+    dist_mat = torch.pow(torch.sum(torch.pow(XX - YY, 2), dim=sum_axis), 0.5)
+    dist_mat = torch.where(dist_mat < 1e-10, torch.full_like(dist_mat,1e10), dist_mat)
+    sorted_mat = torch.sort(dist_mat, dim=1)
+    r_max = sorted_mat[0][:, k-1].reshape(-1, 1)
+    mask = (dist_mat <= r_max).float()
+    import ipdb;ipdb.set_trace()
+    mat = -1 / ( torch.log(sorted_mat[0][:,:k-1]/r_max))
+    # est = -1 / (1 / k * torch.sum(torch.log(dist_mat) * mask, dim=1) - torch.log(r_max).reshape(-1))
+    return mat
+
+# X,Y格式为tensor
+def LID_keras(X, Y, k):
+    X_shape = X.shape.as_list()
+    Y_shape = Y.shape.as_list()
+    # k = tf.sqrt(X_shape[0])
+    sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
+    # XX = X.reshape(X_shape[0], 1, *X_shape[1:]) # XX指的是数据集中的其余点
+    # YY = Y.reshape(1, Y_shape[0], *Y_shape[1:]) # YY指的是reference point
+    # XX = tf.reshape(X,[batch_size, 1, -1])
+    # YY = tf.reshape(Y,[1, batch_size, -1])
+    XX = tf.expand_dims(X, 1)
+    YY = tf.expand_dims(Y, 0)
+    dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
+    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32)  * tf.constant(1e10)
+    sorted_mat = tf.nn.top_k(dist_mat, k=k, sorted=True)
+    r_max = tf.reshape(sorted_mat[0][:, k-1],[-1,1])
+    mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
+    return mat
 
 def resnet_v1(input_shape, depth, num_classes=10):
     """ResNet Version 1 Model builder [a]
@@ -220,8 +260,12 @@ x`
     ####Add LID Feature Here:
     selected_layer_out = y
     # lid_feature = lid(y)
-    lid_feature = selected_layer_out
+    # Lambda(lambda x: K.concatenate([x[0], x[1]], axis=-1))
+    lid_feature = Lambda(lambda x:
+        LID_keras(x,x, k = int(np.sqrt(batch_size)))
+                         )(selected_layer_out)
     lid_feature = Dense(20)(lid_feature)
+    lid_feature = BatchNormalization()(lid_feature)
     #it depends whether to add activation layer here
     # lid_feature = Activation('relu')(lid_feature)
 
