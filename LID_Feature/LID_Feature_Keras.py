@@ -14,6 +14,11 @@ https://arxiv.org/pdf/1603.05027.pdf
 """
 
 from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+import argparse
+import sys
 import keras
 from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Lambda
 from keras.layers import AveragePooling2D, Input, Flatten, Concatenate
@@ -35,6 +40,7 @@ import sys
 from pathlib import *
 import torch
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -168,7 +174,7 @@ def LID_torch(X, Y, k):
     sorted_mat = torch.sort(dist_mat, dim=1)
     r_max = sorted_mat[0][:, k-1].reshape(-1, 1)
     mask = (dist_mat <= r_max).float()
-    import ipdb;ipdb.set_trace()
+
     mat = -1 / ( torch.log(sorted_mat[0][:,:k-1]/r_max))
     # est = -1 / (1 / k * torch.sum(torch.log(dist_mat) * mask, dim=1) - torch.log(r_max).reshape(-1))
     return mat
@@ -265,7 +271,7 @@ x`
         LID_keras(x,x, k = int(np.sqrt(batch_size)))
                          )(selected_layer_out)
     lid_feature = Dense(20)(lid_feature)
-    lid_feature = BatchNormalization()(lid_feature)
+    # lid_feature = BatchNormalization()(lid_feature)
     #it depends whether to add activation layer here
     # lid_feature = Activation('relu')(lid_feature)
 
@@ -316,15 +322,14 @@ def on_epoch_end(epoch, logs):
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 renew_train_dataset()
-# Run training, with or without data augmentation.
-if not data_augmentation:
-    print('Not using data augmentation.')
-    model.fit(x_train_epoch, y_train_epoch,
-              batch_size=batch_size,
-              epochs=epochs,
-              validation_data=(x_test, y_test),
-              shuffle=True,
-              callbacks=callbacks)
+K.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+
+model.fit(x_train_epoch, y_train_epoch,
+          batch_size=batch_size,
+          epochs=epochs,
+          validation_data=(x_test, y_test),
+          shuffle=True,
+          callbacks=callbacks)
 
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
