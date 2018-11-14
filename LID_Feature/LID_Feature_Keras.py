@@ -180,24 +180,54 @@ def LID_torch(X, Y, k):
     return mat
 
 # X,Y格式为tensor
+# def LID_keras(X, Y, k):
+#     X_shape = X.shape.as_list()
+#     Y_shape = Y.shape.as_list()
+#     # k = tf.sqrt(X_shape[0])
+#     sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
+#     # XX = X.reshape(X_shape[0], 1, *X_shape[1:]) # XX指的是数据集中的其余点
+#     # YY = Y.reshape(1, Y_shape[0], *Y_shape[1:]) # YY指的是reference point
+#     # XX = tf.reshape(X,[batch_size, 1, -1])
+#     # YY = tf.reshape(Y,[1, batch_size, -1])
+#     XX = tf.expand_dims(X, 1)
+#     YY = tf.expand_dims(Y, 0)
+#     dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
+#     dist_mat += tf.cast((dist_mat < 1e-10), tf.float32)  * tf.constant(1e10)
+#     sorted_mat = tf.nn.top_k(dist_mat, k=k, sorted=True)
+#     r_max = tf.reshape(sorted_mat[0][:, k-1],[-1,1])
+#     mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
+#     return mat
+
 def LID_keras(X, Y, k):
+
     X_shape = X.shape.as_list()
     Y_shape = Y.shape.as_list()
     # k = tf.sqrt(X_shape[0])
     sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
-    # XX = X.reshape(X_shape[0], 1, *X_shape[1:]) # XX指的是数据集中的其余点
-    # YY = Y.reshape(1, Y_shape[0], *Y_shape[1:]) # YY指的是reference point
-    # XX = tf.reshape(X,[batch_size, 1, -1])
-    # YY = tf.reshape(Y,[1, batch_size, -1])
     XX = tf.expand_dims(X, 1)
     YY = tf.expand_dims(Y, 0)
     dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
-    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32)  * tf.constant(1e10)
-    sorted_mat = tf.nn.top_k(dist_mat, k=k, sorted=True)
-    r_max = tf.reshape(sorted_mat[0][:, k-1],[-1,1])
-    mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
+    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32) * tf.constant(1e10)
+
+    sorted_mat = -tf.nn.top_k(-dist_mat, k=k, sorted=True).values
+    # r_max = sorted_mat[0]
+    r_max = sorted_mat[:, k - 1]
+    # r_max = tf.expand_dims(r_max, 0)
+
+    import ipdb; ipdb.set_trace()
+    print('shape:', r_max.shape)
+    mat = -1 / (tf.log(sorted_mat / r_max))
+    # mat = -1 / (K.log(sorted_mat[:, :k - 1] / (r_max)))
+
+    # mat = -1 / (1 / k * tf.reduce_sum(K.log(sorted_mat),axis=1) - K.log(r_max))
+    # mat = K.eval(mat)
+
+    # import ipdb; ipdb.set_trace()
+    # print(mat.shape)
+    print('OYZH'*10)
     return mat
 
+# global selected_layer_out
 def resnet_v1(input_shape, depth, num_classes=10):
     """ResNet Version 1 Model builder [a]
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
@@ -270,10 +300,20 @@ x`
     lid_feature = Lambda(lambda x:
         LID_keras(x,x, k = int(np.sqrt(batch_size)))
                          )(selected_layer_out)
+
+
+    print('x shape:', x.shape)
+    print('y shape', y.shape)
+    print('lid_feature shape;', lid_feature)
+
     lid_feature = Dense(20)(lid_feature)
+    # import ipdb; ipdb.set_trace()
+    # lid_feature = Flatten()(lid_feature)
+    # y = Flatten()(y)
     # lid_feature = BatchNormalization()(lid_feature)
     #it depends whether to add activation layer here
     # lid_feature = Activation('relu')(lid_feature)
+
 
     y = Concatenate()([y, lid_feature])
 
@@ -303,10 +343,6 @@ lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
                                cooldown=0,
                                patience=5,
                                min_lr=0.5e-6)
-from keras.callbacks import TensorBoard
-callbacks = [lr_reducer, lr_scheduler,TensorBoard(
-    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
-
 x_train_epoch = []
 y_train_epoch = []
 def renew_train_dataset():
@@ -318,11 +354,16 @@ def renew_train_dataset():
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
+    import ipdb; ipdb.set_trace()
+    K.print_tensor(selected_layer_out, 'lid_feature: ')
     renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 renew_train_dataset()
-K.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+# K.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+from keras.callbacks import TensorBoard
+callbacks = [on_epoch_end_callback, lr_reducer, lr_scheduler,TensorBoard(
+    log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
 model.fit(x_train_epoch, y_train_epoch,
           batch_size=batch_size,

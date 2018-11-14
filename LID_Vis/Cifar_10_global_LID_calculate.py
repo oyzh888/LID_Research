@@ -37,8 +37,7 @@ import gc
 import os
 from sklearn.decomposition import PCA
 import lid
-from lid import LID
-from util import GPU_lid_eval
+from lid import *
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 # plt.imshow
@@ -103,7 +102,7 @@ print(x_train.shape[0], 'train samples')
 print(x_test.shape[0], 'test samples')
 print('y_train shape:', y_train.shape)
 # saved_models
-model=load_model('../saved_models/preTrainedCIFAR10_augX10.h5')
+model=load_model('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/saved_models/preTrainedCIFAR10_augX10.h5')
 # outputs = [layer.output for layer in model.layers]
 outputs = []
 layers_names=['average_pooling2d_1']
@@ -133,8 +132,27 @@ for i in pbar(range(batch_num)):
     else:
         mask_batch = np.arange(i*batch_size,train_num)
     # import ipdb;ipdb.set_trace()
-    dis = GPU_lid_eval(outputs_predict_flatten[train_idx[mask_batch]],lid_k)
+    XX = outputs_predict_flatten[train_idx[mask_batch]]
+    dis = LID(XX, XX ,lid_k)
+    dis2 = LID_keras(XX, XX, lid_k)
+    print("dis:", dis)
+
+    print("dis2:", dis2)
+
     outputs_predict_lid[train_idx[mask_batch]] = dis
+
+for i in pbar(range(batch_num)):
+    mask_batch=[]
+    if((i+1)*batch_size<train_num):
+        mask_batch = np.arange(i*batch_size,(i+1)*batch_size)  # 一个样本下标仅出现一次,顺序训练
+    else:
+        mask_batch = np.arange(i*batch_size,train_num)
+    # import ipdb;ipdb.set_trace()
+
+    outputs_predict_lid[train_idx[mask_batch]] = dis
+
+
+
 print("outputs_predic_lid time ",time.time()-start_time)
 print("OUTPUT_PREDICT_LID FINISH!")
 test_time = 0

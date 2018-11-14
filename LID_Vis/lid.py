@@ -67,6 +67,38 @@ def lid(Mxy, k):
     return est
 
 
+import tensorflow as tf
+import keras.backend as K
+
+def LID_keras(X, Y, k):
+    def array_to_tensor(x):
+        return K.constant(np.array(x))
+
+    X = array_to_tensor(X)
+    Y = array_to_tensor(Y)
+
+    X_shape = X.shape.as_list()
+    Y_shape = Y.shape.as_list()
+    # k = tf.sqrt(X_shape[0])
+    sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
+    XX = tf.expand_dims(X, 1)
+    YY = tf.expand_dims(Y, 0)
+    dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
+    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32) * tf.constant(1e10)
+
+    sorted_mat = -tf.nn.top_k(-dist_mat, k=k, sorted=True).values
+    # r_max = sorted_mat[0]
+    r_max = tf.reshape(sorted_mat[:, k - 1], [-1])
+
+    # mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
+
+    mat = -1 / (1 / k * tf.reduce_sum(K.log(sorted_mat),axis=1) - K.log(r_max))
+    mat = K.eval(mat)
+
+    # import ipdb; ipdb.set_trace()
+    # print(K.eval(r_max))
+    return mat
+
 if __name__ == '__main__':
     N = 10
     k = 5
