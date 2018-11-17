@@ -204,19 +204,25 @@ def LID_keras(X, Y, k):
     Y_shape = Y.shape.as_list()
     # k = tf.sqrt(X_shape[0])
     sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
+    print("sum_axis tuple",sum_axis)
     XX = tf.expand_dims(X, 1)
     YY = tf.expand_dims(Y, 0)
     dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
     dist_mat += tf.cast((dist_mat < 1e-10), tf.float32) * tf.constant(1e10)
 
     sorted_mat = -tf.nn.top_k(-dist_mat, k=k, sorted=True).values
-    # r_max = sorted_mat[0]
     r_max = sorted_mat[:, k - 1]
+    r_max = tf.expand_dims(r_max, -1)
+    sorted_mat = sorted_mat[:, :k - 2]
+
     # r_max = tf.expand_dims(r_max, 0)
 
-    import ipdb; ipdb.set_trace()
-    print('shape:', r_max.shape)
-    mat = -1 / (tf.log(sorted_mat / r_max))
+    # import ipdb; ipdb.set_trace()
+    # print('shape:', r_max.shape)
+    sorted_mat += 1
+    mat = sorted_mat / r_max
+    # mat = -1 / (tf.log(sorted_mat / r_max))
+
     # mat = -1 / (K.log(sorted_mat[:, :k - 1] / (r_max)))
 
     # mat = -1 / (1 / k * tf.reduce_sum(K.log(sorted_mat),axis=1) - K.log(r_max))
@@ -224,7 +230,7 @@ def LID_keras(X, Y, k):
 
     # import ipdb; ipdb.set_trace()
     # print(mat.shape)
-    print('OYZH'*10)
+    # print('OYZH'*10)
     return mat
 
 # global selected_layer_out
@@ -354,8 +360,8 @@ def renew_train_dataset():
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
-    import ipdb; ipdb.set_trace()
-    K.print_tensor(selected_layer_out, 'lid_feature: ')
+    # import ipdb; ipdb.set_trace()
+    # K.print_tensor(selected_layer_out, 'lid_feature: ')
     renew_train_dataset()
 
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
