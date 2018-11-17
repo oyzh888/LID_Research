@@ -214,9 +214,10 @@ def LID_keras(X, Y, k):
     r_max = sorted_mat[:, k - 1]
     # r_max = tf.expand_dims(r_max, 0)
 
-    import ipdb; ipdb.set_trace()
-    print('shape:', r_max.shape)
-    mat = -1 / (tf.log(sorted_mat / r_max))
+    # import ipdb; ipdb.set_trace()
+    # print('shape:', r_max.shape)
+    # mat = -1 / (tf.log(sorted_mat / r_max))
+    mat = -1 / (tf.log(sorted_mat+1)+1)
     # mat = -1 / (K.log(sorted_mat[:, :k - 1] / (r_max)))
 
     # mat = -1 / (1 / k * tf.reduce_sum(K.log(sorted_mat),axis=1) - K.log(r_max))

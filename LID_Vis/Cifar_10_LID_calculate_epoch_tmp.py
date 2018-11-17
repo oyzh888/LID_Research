@@ -216,8 +216,13 @@ def get_lid(outputs_predict):
             mask_batch = np.arange(i*batch_size_lid,flatten_shape)
         # import ipdb;ipdb.set_trace()
         # print(mask_batch)
-        dis = LID(outputs_predict_flatten[mask_batch], outputs_predict_flatten[mask_batch], lid_k)
-        dis = GPU_lid_eval_keras(outputs_predict_flatten[mask_batch], lid_k)
+        dis1 = LID(outputs_predict_flatten[mask_batch], outputs_predict_flatten[mask_batch], lid_k)
+        dis2 = LID_keras(outputs_predict_flatten[mask_batch], outputs_predict_flatten[mask_batch], lid_k)
+        print('dis1:', dis1)
+        print('dis1:', dis2)
+        # dis = GPU_lid_eval_keras(outputs_predict_flatten[mask_batch], lid_k)
+
+
 
         outputs_predict_lid[mask_batch] = dis
     return outputs_predict_lid

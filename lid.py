@@ -96,6 +96,36 @@ def LID(X, Y, k):
 
     return est.reshape(-1)
 
+import tensorflow as tf
+import keras.backend as K
+def LID_keras(X, Y, k):
+    def array_to_tensor(x):
+        return K.constant(np.array(x))
+
+    X = array_to_tensor(X)
+    Y = array_to_tensor(Y)
+
+    X_shape = X.shape.as_list()
+    Y_shape = Y.shape.as_list()
+    # k = tf.sqrt(X_shape[0])
+    sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
+    # XX = X.reshape(X_shape[0], 1, *X_shape[1:]) # XX指的是数据集中的其余点
+    # YY = Y.reshape(1, Y_shape[0], *Y_shape[1:]) # YY指的是reference point
+    # XX = tf.reshape(X,[batch_size, 1, -1])
+    # YY = tf.reshape(Y,[1, batch_size, -1])
+    XX = tf.expand_dims(X, 1)
+    YY = tf.expand_dims(Y, 0)
+    dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
+    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32)  * tf.constant(1e10)
+    sorted_mat = tf.nn.top_k(dist_mat, k=k, sorted=True)
+    r_max = tf.reshape(sorted_mat[0][:, k-1],[-1,1])
+
+    # mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
+
+    mat = -1 / (1 / k * K.sum(K.log(sorted_mat), dim=1) - K.log(r_max).reshape(-1))
+    mat = K.eval(mat)
+    return mat
+
 def LID_fast_torch(X, Y, k):
     # import ipdb;ipdb.set_trace()
     # X, Y: [B, h, w], [B, l], ...
