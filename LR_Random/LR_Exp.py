@@ -4,17 +4,18 @@ from keras.callbacks import LambdaCallback
 import LR_resNet
 from LR_resNet import *
 import time
-from keras.optimizers import Adam,SGD
+from keras.optimizers import Adam,SGD,RMSprop,Adagrad
 import random
 
-if(len(sys.argv)>7):
+if(len(sys.argv)>8):
     dataset_name = (sys.argv[1])
-    batch_size = (sys.argv[2])
-    epochs = (sys.argv[3])
+    batch_size = int(sys.argv[2])
+    epochs = int(sys.argv[3])
     optimizer = (sys.argv[4])
     distribution_method = (sys.argv[5])
-    dis_parameter1 = (sys.argv[6])
-    dis_parameter2 = (sys.argv[7])
+    dis_parameter1 = float(sys.argv[6])
+    dis_parameter2 = float(sys.argv[7])
+    work_path_name = (sys.argv[8])
 else:
     print('Wrong Params')
     # exit()
@@ -26,15 +27,17 @@ else:
     distribution_method = 'RL'
     dis_parameter1 = 0.2
     dis_parameter2 = 0.8
+    work_path_name = 'Default'
 
-# work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_LID_Data_Drop/')
-work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LR_Random')
+work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_RandomLR/20epoch')
+work_path = Path('/home/ouyangzhihao/Share/LSTM/Text_Generation_Capacity/Code/Logs/Exp_RandomLR')
+work_path = work_path/work_path_name
+
+# work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LR_Random')
 max_acc_log_path = work_path/'res.txt'
 convergence_epoch = 0
 
 # Training parameters
-batch_size = 64
-epochs = 20
 exp_name = '%s_%d_%d_%s_%s_%10.2f_%10.2f' % (dataset_name,epochs,batch_size,optimizer,distribution_method,dis_parameter1,dis_parameter2)
 
 ##### Train
@@ -56,8 +59,10 @@ if dataset_name=='CIFAR10':
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
     num_classes = len(set(y_train.flatten()))
 if dataset_name=='CIFAR100':
+    print(dataset_name)
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
     num_classes = len(set(y_train.flatten()))
+
 print("class num ",num_classes)
 
 # Path(work_path/'Layer_LID_nparray').mkdir(parents=True, exist_ok=True)
@@ -109,7 +114,8 @@ def lr_schedule(epoch):
         lr = N(lr,dis_parameter1,dis_parameter2)
     elif distribution_method =='RL':
         lr = RL(lr,dis_parameter1,dis_parameter2)
-
+    elif distribution_method =='Base':
+        lr = lr
     print('Learning rate: ', lr)
     return lr
 
@@ -121,6 +127,10 @@ if optimizer=='Adam':
     opt = Adam(lr=lr_schedule(0))
 elif optimizer=='SGD':
     opt = SGD(lr=lr_schedule(0))
+elif optimizer =='RMSprop':
+    opt = RMSprop(lr=lr_schedule(0))
+elif optimizer == 'Adagrad':
+    opt = Adagrad(lr=lr_schedule(0))
 
 model.compile(loss='categorical_crossentropy',
               optimizer=opt,
@@ -156,8 +166,6 @@ def on_epoch_end(epoch, logs):
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
 
 
-work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LID_Random/')
-work_path.mkdir(parents=True, exist_ok=True)
 TB_log_path = work_path/'TB_Log'/exp_name
 callbacks = [on_epoch_end_callback, lr_reducer, lr_scheduler, TensorBoard(log_dir= (TB_log_path.__str__()))]
 # Run training, with or without data augmentation.
