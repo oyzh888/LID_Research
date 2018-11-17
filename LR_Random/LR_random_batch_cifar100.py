@@ -14,14 +14,9 @@ https://arxiv.org/pdf/1603.05027.pdf
 """
 
 from __future__ import print_function
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-import argparse
-import sys
 import keras
-from keras.layers import Dense, Conv2D, BatchNormalization, Activation, Lambda
-from keras.layers import AveragePooling2D, Input, Flatten, Concatenate
+from keras.layers import Dense, Conv2D, BatchNormalization, Activation
+from keras.layers import AveragePooling2D, Input, Flatten
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras.callbacks import ReduceLROnPlateau, LambdaCallback
@@ -29,18 +24,16 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.regularizers import l2
 from keras import backend as K
 from keras.models import Model
-from keras.datasets import cifar10
-import keras.backend as K
+from keras.datasets import cifar100
 import numpy as np
 import os
 from sklearn.decomposition import PCA
+# import lid
+# from lid import LID
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm
 import sys
 from pathlib import *
-import torch
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 
 if(len(sys.argv)!=1):
     order = int(sys.argv[1])
@@ -52,13 +45,27 @@ else:
 # batch_size = 128  # orig paper trained all networks with batch_size=128
 epochs = 20
 data_augmentation = False
-num_classes = 10
+num_classes = 100
 
 # Subtracting pixel mean improves accuracy
 subtract_pixel_mean = True
 # exp_name = 'BaseLine_resNet_Cifar10_BS%d_epochs%d' % (batch_size, epochs)
-exp_name = 'LID_Feature_NoAct_20LID_resNet_Cifar10_BS%d_epochs%d_Shuffle' % (batch_size, epochs)
+exp_name = 'BaseX10_resNet_Cifar100_BS%d_epochs%d_Duplicate1' % (batch_size, epochs)
 
+# Model parameter
+# ----------------------------------------------------------------------------
+#           |      | 200-epoch | Orig Paper| 200-epoch | Orig Paper| sec/epoch
+# Model     |  n   | ResNet v1 | ResNet v1 | ResNet v2 | ResNet v2 | GTX1080Ti
+#           |v1(v2)| %Accuracy | %Accuracy | %Accuracy | %Accuracy | v1 (v2)
+# ----------------------------------------------------------------------------
+# ResNet20  | 3 (2)| 92.16     | 91.25     | -----     | -----     | 35 (---)
+# ResNet32  | 5(NA)| 92.46     | 92.49     | NA        | NA        | 50 ( NA)
+# ResNet44  | 7(NA)| 92.50     | 92.83     | NA        | NA        | 70 ( NA)
+# ResNet56  | 9 (6)| 92.71     | 93.03     | 93.01     | NA        | 90 (100)
+# ResNet110 |18(12)| 92.65     | 93.39+-.16| 93.15     | 93.63     | 165(180)
+# ResNet164 |27(18)| -----     | 94.07     | -----     | 94.54     | ---(---)
+# ResNet1001| (111)| -----     | 92.39     | -----     | 95.08+-.14| ---(---)
+# ---------------------------------------------------------------------------
 n = 3
 
 # Model version
@@ -71,10 +78,13 @@ if version == 1:
 elif version == 2:
     depth = n * 9 + 2
 
+# Model name, depth and version
+model_type = 'ResNet%dv%d' % (depth, version)
+
 # Load the CIFAR10 data.
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
+(x_train, y_train), (x_test, y_test) = cifar100.load_data()
 (x_train, y_train), (x_test, y_test) = (np.array(x_train), np.array(y_train)), (np.array(x_test), np.array(y_test))
-work_path=Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/LID_Feature')
+work_path=Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs')
 # root_path = '/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Cifar10_Aug/Pics_Debug_5w+delete'
 # if not (os.path.exists(root_path)): print("augmentation data not found!")
 # x_train = np.load(root_path+"/aug_train_x.npy")
@@ -103,9 +113,16 @@ print(x_train.shape[0], 'train samples')
 print(x_test.shape[0], 'test samples')
 print('y_train shape:', y_train.shape)
 
+import time
 def lr_schedule(epoch):
+    def ramdom_lr(tmp_lr):
+        factor = 1e2
+        np.random.seed(int(time.time()))
+        tmp_lr = np.random.random() * factor / np.sqrt(factor) * tmp_lr
+        return tmp_lr
+
     #Learning Rate Schedule
-    lr = 1e-3
+    lr = 1e-2
     if epoch >= epochs * 0.9:
         lr *= 0.5e-3
     elif epoch >= epochs * 0.8:
@@ -114,6 +131,7 @@ def lr_schedule(epoch):
         lr *= 1e-2
     elif epoch >= epochs * 0.4:
         lr *= 1e-1
+    # lr = ramdom_lr(lr)
     print('Learning rate: ', lr)
     return lr
 
@@ -160,79 +178,8 @@ def resnet_layer(inputs,
         x = conv(x)
     return x
 
-# 输入：X（计算点）,Y(参考点),batch_size
-# 输出：mat. mat记录了X的距离最近的k个点与最远点的距离比，以及最远点的距离。
-def LID_torch(X, Y, k):
-    # import ipdb;ipdb.set_trace()
-    sum_axis = tuple([i for i in range(2, len(X.shape) + 1)])
-    XX = X.reshape(X.shape[0], 1, *X.shape[1:]) # XX指的是数据集中的其余点
-    YY = Y.reshape(1, Y.shape[0], *Y.shape[1:]) # YY指的是reference point
-    # XX = torch.from_numpy(XX)
-    # YY = torch.from_numpy(YY)
-    dist_mat = torch.pow(torch.sum(torch.pow(XX - YY, 2), dim=sum_axis), 0.5)
-    dist_mat = torch.where(dist_mat < 1e-10, torch.full_like(dist_mat,1e10), dist_mat)
-    sorted_mat = torch.sort(dist_mat, dim=1)
-    r_max = sorted_mat[0][:, k-1].reshape(-1, 1)
-    mask = (dist_mat <= r_max).float()
 
-    mat = -1 / ( torch.log(sorted_mat[0][:,:k-1]/r_max))
-    # est = -1 / (1 / k * torch.sum(torch.log(dist_mat) * mask, dim=1) - torch.log(r_max).reshape(-1))
-    return mat
-
-# X,Y格式为tensor
-# def LID_keras(X, Y, k):
-#     X_shape = X.shape.as_list()
-#     Y_shape = Y.shape.as_list()
-#     # k = tf.sqrt(X_shape[0])
-#     sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
-#     # XX = X.reshape(X_shape[0], 1, *X_shape[1:]) # XX指的是数据集中的其余点
-#     # YY = Y.reshape(1, Y_shape[0], *Y_shape[1:]) # YY指的是reference point
-#     # XX = tf.reshape(X,[batch_size, 1, -1])
-#     # YY = tf.reshape(Y,[1, batch_size, -1])
-#     XX = tf.expand_dims(X, 1)
-#     YY = tf.expand_dims(Y, 0)
-#     dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
-#     dist_mat += tf.cast((dist_mat < 1e-10), tf.float32)  * tf.constant(1e10)
-#     sorted_mat = tf.nn.top_k(dist_mat, k=k, sorted=True)
-#     r_max = tf.reshape(sorted_mat[0][:, k-1],[-1,1])
-#     mat = -1 / ( K.log(sorted_mat[0][:,:k-1]/r_max))
-#     return mat
-
-def LID_keras(X, Y, k):
-
-    X_shape = X.shape.as_list()
-    Y_shape = Y.shape.as_list()
-    # k = tf.sqrt(X_shape[0])
-    sum_axis = tuple([i for i in range(2, len(X_shape) + 1)])
-    print("sum_axis tuple",sum_axis)
-    XX = tf.expand_dims(X, 1)
-    YY = tf.expand_dims(Y, 0)
-    dist_mat = K.sqrt(K.sum(K.pow(XX - YY, 2), axis=sum_axis))
-    dist_mat += tf.cast((dist_mat < 1e-10), tf.float32) * tf.constant(1e10)
-
-    sorted_mat = -tf.nn.top_k(-dist_mat, k=k, sorted=True).values
-    r_max = sorted_mat[:, k - 1]
-    r_max = tf.expand_dims(r_max, -1)
-    sorted_mat = sorted_mat[:, :k - 2]
-
-    # r_max = tf.expand_dims(r_max, 0)
-
-    # import ipdb; ipdb.set_trace()
-    # print('shape:', r_max.shape)
-    # mat = -1 / (tf.log(sorted_mat / r_max))
-    mat = -1 / (tf.log(sorted_mat+1)+1)
-    # mat = -1 / (K.log(sorted_mat[:, :k - 1] / (r_max)))
-
-    # mat = -1 / (1 / k * tf.reduce_sum(K.log(sorted_mat),axis=1) - K.log(r_max))
-    # mat = K.eval(mat)
-
-    # import ipdb; ipdb.set_trace()
-    # print(mat.shape)
-    # print('OYZH'*10)
-    return mat
-
-# global selected_layer_out
-def resnet_v1(input_shape, depth, num_classes=10):
+def resnet_v1(input_shape, depth, num_classes=num_classes):
     """ResNet Version 1 Model builder [a]
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
     Last ReLU is after the shortcut connection.
@@ -295,32 +242,6 @@ x`
     # v1 does not use BN after last shortcut connection-ReLU
     x = AveragePooling2D(pool_size=8)(x)
     y = Flatten()(x)
-
-
-    ####Add LID Feature Here:
-    selected_layer_out = y
-    # lid_feature = lid(y)
-    # Lambda(lambda x: K.concatenate([x[0], x[1]], axis=-1))
-    lid_feature = Lambda(lambda x:
-        LID_keras(x,x, k = int(np.sqrt(batch_size)))
-                         )(selected_layer_out)
-
-
-    print('x shape:', x.shape)
-    print('y shape', y.shape)
-    print('lid_feature shape;', lid_feature)
-
-    lid_feature = Dense(20)(lid_feature)
-    # import ipdb; ipdb.set_trace()
-    # lid_feature = Flatten()(lid_feature)
-    # y = Flatten()(y)
-    # lid_feature = BatchNormalization()(lid_feature)
-    #it depends whether to add activation layer here
-    # lid_feature = Activation('relu')(lid_feature)
-
-
-    y = Concatenate()([y, lid_feature])
-
     outputs = Dense(num_classes,
                     activation='softmax',
                     kernel_initializer='he_normal')(y)
@@ -339,6 +260,7 @@ model.compile(loss='categorical_crossentropy',
               optimizer=Adam(lr=lr_schedule(0)),
               metrics=['accuracy', 'top_k_categorical_accuracy'])
 model.summary()
+print(exp_name)
 
 # Prepare model model saving directory.
 lr_scheduler = LearningRateScheduler(lr_schedule)
@@ -358,25 +280,32 @@ def renew_train_dataset():
 
 def on_epoch_end(epoch, logs):
     print('End of epoch')
-    # import ipdb; ipdb.set_trace()
-    # K.print_tensor(selected_layer_out, 'lid_feature: ')
     renew_train_dataset()
 
+def on_batch_end(epoch, logs):
+    tmp_lr = lr_schedule(epoch)
+    K.set_value(model.optimizer.lr, tmp_lr)
+
 on_epoch_end_callback = LambdaCallback(on_epoch_end=on_epoch_end)
-renew_train_dataset()
-# K.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+on_batch_end_callback = LambdaCallback(on_epoch_end=on_batch_end)
+
 from keras.callbacks import TensorBoard
-callbacks = [on_epoch_end_callback, lr_reducer, lr_scheduler,TensorBoard(
+callbacks = [on_epoch_end_callback, on_batch_end_callback, lr_reducer, lr_scheduler,TensorBoard(
     log_dir= (work_path/'TB_Log'/exp_name).__str__())]
 
-model.fit(x_train_epoch, y_train_epoch,
-          batch_size=batch_size,
-          epochs=epochs,
-          validation_data=(x_test, y_test),
-          shuffle=True,
-          callbacks=callbacks)
+renew_train_dataset()
+# Run training, with or without data augmentation.
+if not data_augmentation:
+    print('Not using data augmentation.')
+    model.fit(x_train_epoch, y_train_epoch,
+              batch_size=batch_size,
+              epochs=epochs,
+              validation_data=(x_test, y_test),
+              shuffle=True,
+              callbacks=callbacks)
 
 # Score trained model.
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
+print(exp_name)
