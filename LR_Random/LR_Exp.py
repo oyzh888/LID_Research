@@ -30,7 +30,7 @@ else:
     work_path_name = 'Default'
 
 work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/Tsinghua/Logs/Exp_RandomLR/20epoch')
-# work_path = Path('/home/ouyangzhihao/Share/LSTM/Text_Generation_Capacity/Code/Logs/Exp_RandomLR')
+work_path = Path('/home/ouyangzhihao/Share/LSTM/Text_Generation_Capacity/Code/Logs/Exp_RandomLR')
 work_path = work_path/work_path_name
 
 # work_path = Path('/unsullied/sharefs/ouyangzhihao/DataRoot/Exp/HTB/LID_Research/LR_Random')
