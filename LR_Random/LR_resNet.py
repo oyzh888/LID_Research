@@ -49,7 +49,6 @@ def resnet_layer(inputs,
                   padding='same',
                   kernel_initializer='he_normal',
                   kernel_regularizer=l2(1e-4))
-
     x = inputs
     if conv_first:
         x = conv(x)
